@@ -1,16 +1,17 @@
 from unittest import TestCase
 from multiprocessing import cpu_count
 from lilota.runner import TaskRunner
-from lilota.models import TaskBase
+from lilota.models import TaskBase, TaskInfo
 from lilota.stores import MemoryTaskStore, StoreManager
 
 
 class AddTask(TaskBase):
   
   def run(self):
-    self.task_info.output = {
+    output = {
       "result": self.task_info.input["number1"] + self.task_info.input["number2"]
     }
+    self.set_output(self.task_info.id, output)
 
 
 class TaskRunnerTestCase(TestCase):
@@ -124,21 +125,47 @@ class TaskRunnerTestCase(TestCase):
     self.assertEqual(str(context.exception), "The task runner must be started first")
 
 
-  def test_add___add_10_add_tasks___should_calculate_the_results(self):
+  def test_add___add_1_task___should_calculate_the_result(self):
     # Arrange
     store, store_manager, runner = self.create_task_runner(1)
     runner.register("add_task", AddTask)
     runner.start()
 
     # Act
-    for i in range(1, 11):
+    runner.add("add_task", "Add two numbers", {"number1": 1, "number2": 2})
+
+    # Assert
+    runner.stop()
+    tasks = store.get_all_tasks()
+    self.assertIsNotNone(tasks)
+    self.assertEqual(len(tasks), 1)
+    self.assertEqual(tasks[0].output["result"], 3)
+    self.assertEqual(tasks[0].progress_percentage, 100)
+    store_manager.shutdown()
+
+
+  def test_add___add_5000_tasks___should_calculate_the_results(self):
+    # Arrange
+    store, store_manager, runner = self.create_task_runner(1)
+    runner.register("add_task", AddTask)
+    runner.start()
+
+    # Act
+    for i in range(1, 5001):
       runner.add("add_task", "Add two numbers", {"number1": i, "number2": i})
 
     # Assert
     runner.stop()
     tasks = store.get_all_tasks()
     self.assertIsNotNone(tasks)
-    self.assertEqual(len(tasks), 10)
+    self.assertEqual(len(tasks), 5000)
+
+    for task in tasks:
+      number1 = task.input["number1"]
+      number2 = task.input["number2"]
+      result = task.output["result"]
+      self.assertEqual(number1 + number2, result)
+    
     store_manager.shutdown()
 
 

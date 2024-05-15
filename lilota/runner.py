@@ -1,5 +1,7 @@
 from multiprocessing import Process, Queue, Lock, cpu_count
 from .stores import TaskStoreBase
+from .models import TaskInfo
+from datetime import datetime, UTC
 
 _lock = Lock()
 
@@ -11,10 +13,10 @@ def _execute(queue: Queue, registrations: dict[str, any], sentinel: str, store: 
       _lock.acquire()
       try:
         # Load task infos from the store
-        task_info = store.get_by_id(id)
+        task_info: TaskInfo = store.get_by_id(id)
 
         # Instantiate the task that should be executed
-        task = registrations[name](task_info)
+        task = registrations[name](task_info, store.set_progress, store.set_output)
       except Exception as ex:
         # TODO: Add logging
         pass
@@ -23,7 +25,9 @@ def _execute(queue: Queue, registrations: dict[str, any], sentinel: str, store: 
 
       # Run the task
       try:
+        store.set_start(task_info.id)
         task.run()
+        store.set_end(task_info.id)
       except Exception as ex:
         pass
   except Exception as ex:

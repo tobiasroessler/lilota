@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from .models import TaskInfo
 from multiprocessing import Lock
 from multiprocessing.managers import BaseManager
+from datetime import datetime, UTC
 
 
 class StoreManager(BaseManager):
@@ -15,7 +16,7 @@ class TaskStoreBase(ABC):
     pass
 
   @abstractmethod
-  def get_all_tasks(self):
+  def get_all_tasks(self) -> list[TaskInfo]:
     pass
 
   @abstractmethod
@@ -23,31 +24,47 @@ class TaskStoreBase(ABC):
     pass
 
   @abstractmethod
-  def update(self, task_info: TaskInfo):
+  def set_start(self, id: int):
+    pass
+
+  @abstractmethod
+  def set_progress(self, id: int, progress: int):
+    pass
+
+  @abstractmethod
+  def set_output(self, id: int, output: dict):
+    pass
+
+  @abstractmethod
+  def set_end(self, id: int):
     pass
 
 
 class MemoryTaskStore(TaskStoreBase):
 
+  id = 0
+
   def __init__(self):
     self._tasks: list[TaskInfo] = []
+    self._done_tasks: list[TaskInfo] = []
     self._lock = Lock()
 
 
   def insert(self, name, description, input):
     self._lock.acquire()
     try:
-      task_info = TaskInfo(name, description, input)
+      task_info = TaskInfo(MemoryTaskStore.id, name, description, input)
+      MemoryTaskStore.id += 1
       self._tasks.append(task_info)
       return task_info.id
     finally:
       self._lock.release()
 
 
-  def get_all_tasks(self):
+  def get_all_tasks(self) -> list[TaskInfo]:
     self._lock.acquire()
     try:
-      return self._tasks
+      return self._tasks + self._done_tasks
     except Exception as ex:
       # TODO: Add logging
       return None
@@ -67,24 +84,91 @@ class MemoryTaskStore(TaskStoreBase):
     finally:
       self._lock.release()
 
-  
-  def update(self, task_info: TaskInfo):
+
+  def set_start(self, id: int):
     self._lock.acquire()
     try:
       found_task = None
 
       for task in self._tasks:
-        if task.id == task_info.id:
+        if task.id == id:
           found_task = task
           break 
 
       if not found_task:
-        raise Exception(f"The task with the id '{task_info.id}' does not exist")
+        raise Exception(f"The task with the id '{id}' does not exist")
       
-      found_task.name = task_info.name
-      found_task.progress_percentage = task_info.progress_percentage
+      found_task.start_date_time = datetime.now(UTC)
+    except Exception as ex:
+      # TODO: Add logging
+      pass
+    finally:
+      self._lock.release()
 
-      self._tasks.append(task_info)
+  
+  def set_progress(self, id: int, progress: int):
+    self._lock.acquire()
+    try:
+      found_task = None
+
+      for task in self._tasks:
+        if task.id == id:
+          found_task = task
+          break 
+
+      if not found_task:
+        raise Exception(f"The task with the id '{id}' does not exist")
+      
+      found_task.progress_percentage = progress
+    except Exception as ex:
+      # TODO: Add logging
+      pass
+    finally:
+      self._lock.release()
+
+
+  def set_output(self, id: int, output: dict):
+    self._lock.acquire()
+    try:
+      found_task = None
+
+      for task in self._tasks:
+        if task.id == id:
+          found_task = task
+          break 
+
+      if not found_task:
+        raise Exception(f"The task with the id '{id}' does not exist")
+      
+      found_task.output = output
+    except Exception as ex:
+      # TODO: Add logging
+      pass
+    finally:
+      self._lock.release()
+
+
+  def set_end(self, id: int):
+    self._lock.acquire()
+    try:
+      found_task = None
+      index = -1
+
+      for i in range(len(self._tasks)):
+        task = self._tasks[i]
+        if task.id == id:
+          found_task = task
+          index = i
+          break 
+
+      if not found_task:
+        raise Exception(f"The task with the id '{id}' does not exist")
+      
+      found_task.end_date_time = datetime.now(UTC)
+      found_task.progress_percentage = 100
+
+      del self._tasks[index]
+      self._done_tasks.append(found_task)
     except Exception as ex:
       # TODO: Add logging
       pass
