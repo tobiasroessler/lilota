@@ -3,6 +3,8 @@ from .models import TaskInfo
 from multiprocessing import Lock
 from multiprocessing.managers import BaseManager
 from datetime import datetime, UTC
+import logging
+from logging.handlers import QueueHandler
 
 
 class StoreManager(BaseManager):
@@ -66,7 +68,6 @@ class MemoryTaskStore(TaskStoreBase):
     try:
       return self._tasks + self._done_tasks
     except Exception as ex:
-      # TODO: Add logging
       return None
     finally:
       self._lock.release()
@@ -79,7 +80,6 @@ class MemoryTaskStore(TaskStoreBase):
         if task.id == id:
           return task
     except Exception as ex:
-      # TODO: Add logging
       return None
     finally:
       self._lock.release()
@@ -99,9 +99,6 @@ class MemoryTaskStore(TaskStoreBase):
         raise Exception(f"The task with the id '{id}' does not exist")
       
       found_task.start_date_time = datetime.now(UTC)
-    except Exception as ex:
-      # TODO: Add logging
-      pass
     finally:
       self._lock.release()
 
@@ -120,9 +117,6 @@ class MemoryTaskStore(TaskStoreBase):
         raise Exception(f"The task with the id '{id}' does not exist")
       
       found_task.progress_percentage = progress
-    except Exception as ex:
-      # TODO: Add logging
-      pass
     finally:
       self._lock.release()
 
@@ -141,9 +135,6 @@ class MemoryTaskStore(TaskStoreBase):
         raise Exception(f"The task with the id '{id}' does not exist")
       
       found_task.output = output
-    except Exception as ex:
-      # TODO: Add logging
-      pass
     finally:
       self._lock.release()
 
@@ -169,8 +160,5 @@ class MemoryTaskStore(TaskStoreBase):
 
       del self._tasks[index]
       self._done_tasks.append(found_task)
-    except Exception as ex:
-      # TODO: Add logging
-      pass
     finally:
       self._lock.release()
