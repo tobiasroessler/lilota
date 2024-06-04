@@ -25,7 +25,7 @@ def _execute(queue: Queue, registrations: dict[str, any], sentinel: str, store: 
         task_info: TaskInfo = store.get_by_id(id)
 
         # Instantiate the task that should be executed
-        task = registrations[name](task_info, store.set_progress, store.set_output)
+        task = registrations[name](task_info, store.set_progress, store.set_output, logger)
       except Exception as ex:
         logger.exception(str(ex))
       finally:

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import datetime
+import logging
 
 
 @dataclass(init=False)
@@ -25,10 +26,11 @@ class TaskInfo():
 
 class TaskBase(ABC):
 
-  def __init__(self, task_info: TaskInfo, set_progress, set_output):
+  def __init__(self, task_info: TaskInfo, set_progress, set_output, logger: logging.Logger):
     self.task_info = task_info
     self.set_progress = set_progress
     self.set_output = set_output
+    self.logger = logger
 
   @abstractmethod
   def run(self):
