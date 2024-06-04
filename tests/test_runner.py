@@ -112,7 +112,7 @@ class TaskRunnerTestCase(TestCase):
     runner.start()
     self.assertTrue(runner._is_started)
     self.assertEqual(len(runner._processes), cpu_count())
-    self.assertIsNotNone(runner._logging_process)
+    self.assertIsNotNone(runner._logging_thread)
     self.assertIsNotNone(runner._store)
 
     # Act
@@ -121,7 +121,7 @@ class TaskRunnerTestCase(TestCase):
     # Assert
     self.assertFalse(runner._is_started)
     self.assertEqual(len(runner._processes), 0)
-    self.assertIsNone(runner._logging_process)
+    self.assertIsNone(runner._logging_thread)
     self.assertIsNotNone(runner._store)
 
 
@@ -149,7 +149,6 @@ class TaskRunnerTestCase(TestCase):
     tasks = store.get_all_tasks()
     self.assertIsNotNone(tasks)
     self.assertEqual(len(tasks), 1)
-    #self.assertEqual(tasks[0].output["result"], 3)
     self.assertEqual(tasks[0].progress_percentage, 100)
     store_manager.shutdown()
 
