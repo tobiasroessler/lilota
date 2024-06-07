@@ -5,7 +5,6 @@
 - [When to use it?](#when-to-use-it)
 - [How to install it?](#how-to-install-it)
 - [How to use it?](#how-to-use-it)
-- [How does it work?](#how-does-it-work)
 
 
 ## What is it?
@@ -208,5 +207,3 @@ if __name__ == "__main__":
   store_manager.shutdown()
 ```
 
-
-## How does it work?
