@@ -1,10 +1,13 @@
-from unittest import TestCase
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from unittest import TestCase, main
 from multiprocessing import cpu_count
 from lilota.runner import TaskRunner
-from lilota.models import TaskBase, TaskInfo
+from lilota.models import TaskBase
 from lilota.stores import MemoryTaskStore, StoreManager
 import logging
-import time
 
 
 class AdditionTask(TaskBase):
@@ -201,3 +204,7 @@ class TaskRunnerTestCase(TestCase):
     store = store_manager.Store()
     runner = TaskRunner(store, number_of_processes, logging_level=logging.INFO)
     return (store, store_manager, runner)
+  
+
+if __name__ == '__main__':
+  main()
