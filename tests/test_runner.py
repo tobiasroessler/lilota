@@ -63,7 +63,10 @@ class TaskRunnerTestCase(TestCase):
     runner.start()
 
     # Assert
-    self.assertEqual(runner._number_of_processes, cpu_count())
+    try:
+      self.assertEqual(runner._number_of_processes, cpu_count())
+    finally:
+      runner.stop()
 
 
   def test_start___number_of_processes_is_set_to_one___should_use_one(self):
@@ -74,7 +77,10 @@ class TaskRunnerTestCase(TestCase):
     runner.start()
 
     # Assert
-    self.assertEqual(runner._number_of_processes, 1)
+    try:
+      self.assertEqual(runner._number_of_processes, 1)
+    finally:
+      runner.stop()
 
 
   def test_start___number_of_processes_is_greater_than_cpu_count___should_use_cpu_count(self):
@@ -85,7 +91,10 @@ class TaskRunnerTestCase(TestCase):
     runner.start()
 
     # Assert
-    self.assertEqual(runner._number_of_processes, cpu_count())
+    try:
+      self.assertEqual(runner._number_of_processes, cpu_count())
+    finally:
+      runner.stop()
 
 
   def test_start___but_start_twice___should_raise_exception(self):
@@ -96,7 +105,10 @@ class TaskRunnerTestCase(TestCase):
     # Act & Assert
     with self.assertRaises(Exception) as context:
       runner.start()
-    self.assertEqual(str(context.exception), "The task runner is already started")
+    try:
+      self.assertEqual(str(context.exception), "The task runner is already started")
+    finally:
+      runner.stop()
 
 
   def test_stop___but_start_was_not_executed___should_raise_exception(self):

@@ -1,7 +1,7 @@
 from multiprocessing import Process, Queue, Lock, cpu_count
 import threading
 from .stores import TaskStoreBase
-from .models import TaskInfo
+from .models import TaskInfoProtocol
 from datetime import datetime, UTC
 from logging.handlers import QueueHandler
 import logging
@@ -22,7 +22,7 @@ def _execute(queue: Queue, registrations: dict[str, any], sentinel: str, store: 
         logger.debug(f"Instantiate the task using the id {id} and the registered name '{name}'")
 
         # Load task infos from the store
-        task_info: TaskInfo = store.get_by_id(id)
+        task_info: TaskInfoProtocol = store.get_by_id(id)
 
         # Instantiate the task that should be executed
         task = registrations[name](task_info, store.set_progress, store.set_output, logger)
