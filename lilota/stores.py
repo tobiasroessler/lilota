@@ -10,7 +10,7 @@ from typing import Any
 class TaskStoreBase(ABC):
 
   @abstractmethod
-  def insert(self, name: str, description: str, input: Any):
+  def insert(self, name: str, input: Any):
     pass
 
   @abstractmethod
@@ -61,24 +61,20 @@ class SqlAlchemyTaskStore(TaskStoreBase):
     return self._Session()
 
 
-  def insert(self, name: str, description: str, input: Any):
-    try:
-      with self._get_session() as session:
-        # TODO: Here we should also support dataclasses
-        if isinstance(input, BaseModel):
-          input = input.model_dump()
+  def insert(self, name: str, input: Any):
+    with self._get_session() as session:
+      # TODO: Here we should also support dataclasses
+      if isinstance(input, BaseModel):
+        input = input.model_dump()
 
-        task = Task(
-          name=name,
-          description=description,
-          input=input,
-        )
-        
-        session.add(task)
-        session.commit()
-        return task.id
-    except Exception as ex:
-      pass
+      task = Task(
+        name=name,
+        input=input,
+      )
+      
+      session.add(task)
+      session.commit()
+      return task.id
 
 
   def get_all_tasks(self):

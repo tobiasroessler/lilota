@@ -55,10 +55,9 @@ class RegisteredTask:
 
 class Lilota:
 
-  def __init__(self, name: str, db_url="sqlite:///lilota.db", number_of_processes = cpu_count()):
+  def __init__(self, name: str, db_url: str, number_of_processes = cpu_count()):
     self._name = name
     self._registry: Dict[str, RegisteredTask] = {}
-    self._model_registry = {}
 
     # Upgrade the database
     upgrade_db(db_url)
@@ -67,7 +66,7 @@ class Lilota:
     self._runner = TaskRunner(db_url, number_of_processes=number_of_processes)
 
 
-  def register_func(
+  def _register(
     self,
     name: str,
     func: Callable,
@@ -97,7 +96,7 @@ class Lilota:
     output_model=None,
   ):
     def decorator(func):
-      self.register_func(
+      self._register(
         name=name,
         func=func,
         input_model=input_model,
@@ -112,7 +111,7 @@ class Lilota:
 
 
   def schedule(self, name: str, input_model: Any):
-    self._runner.add(name, "We add two numbers", input_model)
+    self._runner.add(name, input_model)
 
 
   def stop(self):

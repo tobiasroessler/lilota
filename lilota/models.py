@@ -11,7 +11,6 @@ class Task(Base):
   __tablename__ = "task"
   id: Mapped[int] = mapped_column(primary_key=True)
   name: Mapped[str] = mapped_column(String, nullable=False)
-  description: Mapped[str | None] = mapped_column(String)
   pid: Mapped[int] = mapped_column(default=0)
   progress_percentage: Mapped[int] = mapped_column(default=0)
   start_date_time: Mapped[datetime] = mapped_column(

@@ -154,7 +154,7 @@ class TaskRunner():
       _lock.release()
 
 
-  def add(self, name: str, description: str, input: Any):
+  def add(self, name: str, input: Any):
     # Check that the task runner is started
     _lock.acquire()
     try:
@@ -167,7 +167,7 @@ class TaskRunner():
     try:
       # Save the task infos in the store
       self._logger.debug(f"Save task inside the store (name: '{name}', input: {input})")
-      id = self._store.insert(name, description, input)
+      id = self._store.insert(name, input)
 
       # Add infos to the queue
       self._input_queue.put((id, name))

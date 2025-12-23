@@ -209,6 +209,24 @@ if __name__ == "__main__":
 
 
 
+# Development
+
+## Use alembic
+
+### Create initial schema
+alembic init lilota/db/migrations
+
+### Create migrations
+alembic revision --autogenerate -m "initial schema"
+
+### Recreate DB
+* Delete the database file, i.e. lilota.db
+* Delete all files in db/migrations/versions folder
+* Create initial schema
+* Create migrations
+
+
+## Publish package
 
 rm -rf build dist *.egg-info
 python3 -m build --sdist
