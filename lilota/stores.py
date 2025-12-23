@@ -1,24 +1,20 @@
 from abc import ABC, abstractmethod
-from .models import TaskInfo
-from multiprocessing import Lock
-from multiprocessing.managers import BaseManager
-from datetime import datetime, UTC
-import logging
-from logging.handlers import QueueHandler
-
-
-class StoreManager(BaseManager):
-  pass
+from .models import Task
+from datetime import datetime, UTC, timezone
+from pydantic import BaseModel
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from typing import Any
 
 
 class TaskStoreBase(ABC):
 
   @abstractmethod
-  def insert(self, task_info: TaskInfo):
+  def insert(self, name: str, description: str, input: Any):
     pass
 
   @abstractmethod
-  def get_all_tasks(self) -> list[TaskInfo]:
+  def get_all_tasks(self) -> list[Task]:
     pass
 
   @abstractmethod
@@ -34,7 +30,7 @@ class TaskStoreBase(ABC):
     pass
 
   @abstractmethod
-  def set_output(self, id: int, output: dict):
+  def set_output(self, id: int, output: Any):
     pass
 
   @abstractmethod
@@ -42,123 +38,103 @@ class TaskStoreBase(ABC):
     pass
 
 
-class MemoryTaskStore(TaskStoreBase):
 
-  id = 0
+class SqlAlchemyTaskStore(TaskStoreBase):
 
-  def __init__(self):
-    self._tasks: list[TaskInfo] = []
-    self._done_tasks: list[TaskInfo] = []
-    self._lock = Lock()
+  def __init__(self, db_url: str):
+    self._db_url = db_url
+    self._engine = None
+    self._Session = None
 
 
-  def insert(self, name, description, input):
-    self._lock.acquire()
+  def _get_engine(self):
+    if self._engine is None:
+      self._engine = create_engine(self._db_url, future=True)
+      self._Session = sessionmaker(
+        bind=self._engine,
+        expire_on_commit=False,
+      )
+
+
+  def _get_session(self):
+    self._get_engine()
+    return self._Session()
+
+
+  def insert(self, name: str, description: str, input: Any):
     try:
-      task_info = TaskInfo(MemoryTaskStore.id, name, description, input)
-      MemoryTaskStore.id += 1
-      self._tasks.append(task_info)
-      return task_info.id
-    finally:
-      self._lock.release()
+      with self._get_session() as session:
+        # TODO: Here we should also support dataclasses
+        if isinstance(input, BaseModel):
+          input = input.model_dump()
 
-
-  def get_all_tasks(self) -> list[TaskInfo]:
-    self._lock.acquire()
-    try:
-      return self._tasks + self._done_tasks
+        task = Task(
+          name=name,
+          description=description,
+          input=input,
+        )
+        
+        session.add(task)
+        session.commit()
+        return task.id
     except Exception as ex:
-      return None
-    finally:
-      self._lock.release()
+      pass
 
 
-  def get_by_id(self, id):
-    self._lock.acquire()
-    try:
-      for task in self._tasks:
-        if task.id == id:
-          return task
-    except Exception as ex:
-      return None
-    finally:
-      self._lock.release()
+  def get_all_tasks(self):
+    with self._get_session() as session:
+      tasks = session.query(Task).order_by(Task.id).all()
+      return [t for t in tasks]
+
+
+  def get_by_id(self, id: int):
+    with self._get_session() as session:
+      task = session.get(Task, id)
+      if task is None:
+        return None
+      return task
 
 
   def set_start(self, id: int):
-    self._lock.acquire()
-    try:
-      found_task = None
+    with self._get_session() as session:
+      task = session.get(Task, id)
+      if task is None:
+        raise ValueError(f"Task {id} not found")
 
-      for task in self._tasks:
-        if task.id == id:
-          found_task = task
-          break 
+      task.start_date_time = datetime.now(timezone.utc)
+      session.commit()
 
-      if not found_task:
-        raise Exception(f"The task with the id '{id}' does not exist")
-      
-      found_task.start_date_time = datetime.now(UTC)
-    finally:
-      self._lock.release()
 
-  
   def set_progress(self, id: int, progress: int):
-    self._lock.acquire()
-    try:
-      found_task = None
+    with self._get_session() as session:
+      task = session.get(Task, id)
+      if task is None:
+        raise ValueError(f"Task {id} not found")
 
-      for task in self._tasks:
-        if task.id == id:
-          found_task = task
-          break 
-
-      if not found_task:
-        raise Exception(f"The task with the id '{id}' does not exist")
-      
-      found_task.progress_percentage = progress
-    finally:
-      self._lock.release()
+      task.progress_percentage = max(0, min(progress, 100))
+      session.commit()
 
 
-  def set_output(self, id: int, output: dict):
-    self._lock.acquire()
-    try:
-      found_task = None
+  def set_output(self, id: int, output: Any):
+    with self._get_session() as session:
+      if isinstance(output, BaseModel):
+        output = output.model_dump()
 
-      for task in self._tasks:
-        if task.id == id:
-          found_task = task
-          break 
+      task = session.get(Task, id)
+      if task is None:
+        raise ValueError(f"Task {id} not found")
 
-      if not found_task:
-        raise Exception(f"The task with the id '{id}' does not exist")
-      
-      found_task.output = output
-    finally:
-      self._lock.release()
+      task.output = output
+      session.commit()
 
 
   def set_end(self, id: int):
-    self._lock.acquire()
-    try:
-      found_task = None
-      index = -1
+    with self._get_session() as session:
+      task = session.get(Task, id)
+      if task is None:
+        raise ValueError(f"Task {id} not found")
 
-      for i in range(len(self._tasks)):
-        task = self._tasks[i]
-        if task.id == id:
-          found_task = task
-          index = i
-          break 
-
-      if not found_task:
-        raise Exception(f"The task with the id '{id}' does not exist")
+      task.end_date_time = datetime.now(timezone.utc)
+      task.progress_percentage = 100
+      session.commit()
       
-      found_task.end_date_time = datetime.now(UTC)
-      found_task.progress_percentage = 100
-
-      del self._tasks[index]
-      self._done_tasks.append(found_task)
-    finally:
-      self._lock.release()

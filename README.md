@@ -207,3 +207,10 @@ if __name__ == "__main__":
   store_manager.shutdown()
 ```
 
+
+
+
+rm -rf build dist *.egg-info
+python3 -m build --sdist
+python3 -m build --wheel 
+twine upload dist/*

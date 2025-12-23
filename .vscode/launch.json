@@ -1,0 +1,13 @@
+{
+  "version": "0.5.0",
+  "configurations": [
+    {
+      "name": "lilota-sample",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/sample/lilota-sample.py",
+      "args": [],
+      "justMyCode": true
+    }
+  ]
+}

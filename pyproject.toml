@@ -4,9 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lilota"
-version = "0.0.5"
+version = "0.1.0"
 authors = [
   { name="Tobias Rössler", email="tobiasroessler@gmail.com" },
+]
+dependencies = [
+  "SQLAlchemy>=2.0",
+  "alembic>=1.17"
 ]
 description = "A lightweight solution for long-running tasks"
 readme = "README.md"
@@ -16,6 +20,13 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+
+[tool.setuptools.packages.find]
+where = ["."]
+exclude = ["tests*"]
+
+[tool.setuptools.package-data]
+"lilota" = ["db/migrations/**", "db/migrations/**/**"]
 
 [project.urls]
 Homepage = "https://github.com/tobiasroessler/lilota"

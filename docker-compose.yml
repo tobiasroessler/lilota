@@ -1,0 +1,32 @@
+version: '3.9'
+
+services:
+  pg-lilota-sample:
+    image: postgres:16
+    container_name: pg_lilota_sample
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: lilota_sample
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_lilota_sample_data:/var/lib/postgresql/data
+
+  pg-lilota-test:
+    image: postgres:16
+    container_name: pg_lilota_test
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: lilota_test
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_lilota_test_data:/var/lib/postgresql/data
+
+volumes:
+  pg_lilota_sample_data:
+  pg_lilota_test_data:

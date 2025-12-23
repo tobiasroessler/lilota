@@ -1,17 +1,19 @@
 from multiprocessing import Process, Queue, Lock, cpu_count
+from typing import Any, Callable
 import threading
-from .stores import TaskStoreBase
-from .models import TaskInfoProtocol
-from datetime import datetime, UTC
+from .models import Task
+from datetime import datetime
 from logging.handlers import QueueHandler
+from lilota.stores import SqlAlchemyTaskStore
 import logging
 
 _lock = Lock()
 
-def _execute(queue: Queue, registrations: dict[str, any], sentinel: str, store: TaskStoreBase, logging_queue: Queue, logging_level):
+def _execute(queue: Queue, registrations: Callable, sentinel: str, db_url: str, logging_queue: Queue, logging_level):
   logger = logging.getLogger("lilota")
   logger.addHandler(QueueHandler(logging_queue))
   logger.setLevel(logging_level)
+  store = SqlAlchemyTaskStore(db_url=db_url)
   
   # We get the tasks from the queue. If the sentinel is send we stop.
   try:
@@ -22,28 +24,29 @@ def _execute(queue: Queue, registrations: dict[str, any], sentinel: str, store: 
         logger.debug(f"Instantiate the task using the id {id} and the registered name '{name}'")
 
         # Load task infos from the store
-        task_info: TaskInfoProtocol = store.get_by_id(id)
+        task: Task = store.get_by_id(id)
 
-        # Instantiate the task that should be executed
-        task = registrations[name](task_info, store.set_progress, store.set_output, logger)
+        # Get the function to execute
+        func = registrations[name]
       except Exception as ex:
         logger.exception(str(ex))
       finally:
         _lock.release()
 
-      # Run the task
+      # Run the function
       try:
-        logger.info(f"Start task (name: '{task_info.name}', id: {task_info.id})")
-        store.set_start(task_info.id)
+        logger.info(f"Start function (name: '{task.name}', id: {task.id})")
+        store.set_start(task.id)
         start_time = datetime.now()
-        task.run()
+        result = func(task.input)
         end_time = datetime.now()
         formatted_time = get_elapsed_time(start_time, end_time)
-        logger.info(f"Task executed (name: '{task_info.name}', id: {task_info.id}, elapsed time: {formatted_time})")
+        store.set_output(task.id, result)
+        logger.info(f"Function executed (name: '{task.name}', id: {task.id}, elapsed time: {formatted_time})")
       except Exception as ex:
         logger.exception(str(ex))
       finally:
-        store.set_end(task_info.id)
+        store.set_end(task.id)
   except Exception as ex:
     logger.exception(str(ex))
 
@@ -74,13 +77,15 @@ class TaskRunner():
   LOGGER_NAME = "lilota"
   LOGGING_FORMATTER_DEFAULT = "%(asctime)s [PID %(process)d]: [%(levelname)s] - %(message)s"
   
-  def __init__(self, store, number_of_processes: int = cpu_count(), logging_formatter = LOGGING_FORMATTER_DEFAULT, logging_level = logging.DEBUG):
+  #def __init__(self, store: TaskStoreBase, number_of_processes: int = cpu_count(), logging_formatter = LOGGING_FORMATTER_DEFAULT, logging_level = logging.DEBUG):
+  def __init__(self, db_url: str, number_of_processes: int = cpu_count(), logging_formatter = LOGGING_FORMATTER_DEFAULT, logging_level = logging.DEBUG):
     if not isinstance(number_of_processes, int):
       raise TypeError("'number_of_processes' is not of type int")
     
+    self._db_url = db_url
     self._number_of_processes = min(number_of_processes, cpu_count())
-    self._store: TaskStoreBase = store
-    self._registrations: dict[str, any] = {}
+    self._store = SqlAlchemyTaskStore(db_url)
+    self._registrations: dict[str, Callable] = {}
     self._input_queue = None
     self._logger = logging.getLogger(self.LOGGER_NAME)
     self._logging_queue = None
@@ -91,18 +96,19 @@ class TaskRunner():
     self._is_started = False
 
 
-  def register(self, name, clazz):
+  def register(self, name: str, func: Callable):
     
-    _lock.acquire()
+    #_lock.acquire()
     try:
       # Check that the task runner is not started
       if self._is_started:
-        raise Exception("It is not allowed to register classes after the task runner was started. Stop the runner first using the stop() method.")
+        raise Exception("It is not allowed to register functions after the task runner was started. Stop the runner first using the stop() method.")
       
-      # Register the class
-      self._registrations[name] = clazz
+      # Register the function
+      self._registrations[name] = func
     finally:
-      _lock.release()
+      pass
+      #_lock.release()
 
 
   def start(self):
@@ -135,18 +141,20 @@ class TaskRunner():
       self._is_started = True
 
       for _ in range(self._number_of_processes):
-        p = Process(target=_execute, args=(self._input_queue, self._registrations, self.SENTINEL, self._store, self._logging_queue, self._logging_level), daemon=True)
+        # p = Process(target=_execute, args=(self._input_queue, self._registrations, self.SENTINEL, self._store, self._logging_queue, self._logging_level), daemon=True)
+        p = Process(target=_execute, args=(self._input_queue, self._registrations, self.SENTINEL, self._db_url, self._logging_queue, self._logging_level), daemon=True)
         p.start()
         self._processes.append((p, _execute))
         self._logger.debug(f"Process started (PID: {p.pid})")
       self._logger.info(f"lilota started ({self._number_of_processes} process(es) used)")
     except Exception as ex:
       self._logger.exception(str(ex))
+      raise Exception(f"An error occured when starting the processes: {str(ex)}")
     finally:
       _lock.release()
 
 
-  def add(self, name, description, args):
+  def add(self, name: str, description: str, input: Any):
     # Check that the task runner is started
     _lock.acquire()
     try:
@@ -158,8 +166,8 @@ class TaskRunner():
     _lock.acquire()
     try:
       # Save the task infos in the store
-      self._logger.debug(f"Save task inside the store (name: '{name}', args: {args})")
-      id = self._store.insert(name, description, args)
+      self._logger.debug(f"Save task inside the store (name: '{name}', input: {input})")
+      id = self._store.insert(name, description, input)
 
       # Add infos to the queue
       self._input_queue.put((id, name))
