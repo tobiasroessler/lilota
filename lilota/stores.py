@@ -1,16 +1,17 @@
 from abc import ABC, abstractmethod
-from .models import Task
+from .models import Task, TaskStatus
 from datetime import datetime, UTC, timezone
 from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from typing import Any
+from lilota.utils import exception_to_dict, normalize_data
 
 
 class TaskStoreBase(ABC):
 
   @abstractmethod
-  def insert(self, name: str, input: Any):
+  def create_task(self, name: str, input: Any):
     pass
 
   @abstractmethod
@@ -18,11 +19,11 @@ class TaskStoreBase(ABC):
     pass
 
   @abstractmethod
-  def get_by_id(self, id):
+  def get_task_by_id(self, id):
     pass
 
   @abstractmethod
-  def set_start(self, id: int):
+  def start_task(self, id: int):
     pass
 
   @abstractmethod
@@ -30,11 +31,11 @@ class TaskStoreBase(ABC):
     pass
 
   @abstractmethod
-  def set_output(self, id: int, output: Any):
+  def end_task_success(self, id: int, output: Any):
     pass
 
   @abstractmethod
-  def set_end(self, id: int):
+  def end_task_failure(self, id: int, ex: Exception):
     pass
 
 
@@ -45,6 +46,75 @@ class SqlAlchemyTaskStore(TaskStoreBase):
     self._db_url = db_url
     self._engine = None
     self._Session = None
+
+
+  def create_task(self, name: str, input: Any):
+    input = normalize_data(input)
+    task = Task(
+      name=name,
+      input=input,
+      status = TaskStatus.PENDING
+    )
+    
+    with self._get_session() as session:
+      with session.begin():
+        session.add(task)
+        #session.commit()
+
+    return task.id
+
+
+  def get_all_tasks(self):
+    with self._get_session() as session:
+      with session.begin():
+        return session.query(Task).order_by(Task.id).all()
+
+
+  def get_task_by_id(self, id: int):
+    with self._get_session() as session:
+      with session.begin():
+        task = session.get(Task, id)
+        if task is None:
+          return None
+        return task
+
+
+  def start_task(self, id: int) -> Task:
+    with self._get_session() as session:
+      with session.begin():
+        task = self._load_task(session, id)
+        task.start_date_time = datetime.now(timezone.utc)
+        task.status = TaskStatus.RUNNING
+        return task
+
+
+  def set_progress(self, id: int, progress: int):
+    with self._get_session() as session:
+      with session.begin():
+        task = self._load_task(session, id)
+        task.progress_percentage = max(0, min(progress, 100))
+
+
+  def end_task_success(self, id: int, output: Any):
+    output = normalize_data(output)
+
+    with self._get_session() as session:
+      with session.begin():
+        task = self._load_task(session, id)
+        task.output = output
+        task.progress_percentage = 100
+        task.status = TaskStatus.COMPLETED
+        task.end_date_time = datetime.now(timezone.utc)
+
+
+  def end_task_failure(self, id: int, ex: Exception):
+    with self._get_session() as session:
+      with session.begin():
+        task = self._load_task(session, id)
+        task.exception = exception_to_dict(ex)
+        task.progress_percentage = 100
+        task.status = TaskStatus.FAILED
+        task.end_date_time = datetime.now(timezone.utc)
 
 
   def _get_engine(self):
@@ -61,76 +131,8 @@ class SqlAlchemyTaskStore(TaskStoreBase):
     return self._Session()
 
 
-  def insert(self, name: str, input: Any):
-    with self._get_session() as session:
-      # TODO: Here we should also support dataclasses
-      if isinstance(input, BaseModel):
-        input = input.model_dump()
-
-      task = Task(
-        name=name,
-        input=input,
-      )
-      
-      session.add(task)
-      session.commit()
-      return task.id
-
-
-  def get_all_tasks(self):
-    with self._get_session() as session:
-      tasks = session.query(Task).order_by(Task.id).all()
-      return [t for t in tasks]
-
-
-  def get_by_id(self, id: int):
-    with self._get_session() as session:
-      task = session.get(Task, id)
-      if task is None:
-        return None
-      return task
-
-
-  def set_start(self, id: int):
-    with self._get_session() as session:
-      task = session.get(Task, id)
-      if task is None:
-        raise ValueError(f"Task {id} not found")
-
-      task.start_date_time = datetime.now(timezone.utc)
-      session.commit()
-
-
-  def set_progress(self, id: int, progress: int):
-    with self._get_session() as session:
-      task = session.get(Task, id)
-      if task is None:
-        raise ValueError(f"Task {id} not found")
-
-      task.progress_percentage = max(0, min(progress, 100))
-      session.commit()
-
-
-  def set_output(self, id: int, output: Any):
-    with self._get_session() as session:
-      if isinstance(output, BaseModel):
-        output = output.model_dump()
-
-      task = session.get(Task, id)
-      if task is None:
-        raise ValueError(f"Task {id} not found")
-
-      task.output = output
-      session.commit()
-
-
-  def set_end(self, id: int):
-    with self._get_session() as session:
-      task = session.get(Task, id)
-      if task is None:
-        raise ValueError(f"Task {id} not found")
-
-      task.end_date_time = datetime.now(timezone.utc)
-      task.progress_percentage = 100
-      session.commit()
-      
+  def _load_task(self, session, id: int) -> Task:
+    task: Task = session.get(Task, id)
+    if task is None:
+      raise ValueError(f"Task {id} not found")
+    return task

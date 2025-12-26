@@ -19,6 +19,8 @@ more-itertools==10.2.0
 nh3==0.2.17
 packaging==24.0
 pkginfo==1.11.0
+psycopg==3.3.2
+psycopg-binary==3.3.2
 pydantic==2.11.9
 pydantic_core==2.33.2
 Pygments==2.18.0
@@ -27,7 +29,6 @@ readme_renderer==43.0
 requests==2.32.3
 requests-toolbelt==1.0.0
 rfc3986==2.0.0
-rich==13.7.1
 setuptools==70.0.0
 SQLAlchemy==2.0.44
 twine==5.1.0

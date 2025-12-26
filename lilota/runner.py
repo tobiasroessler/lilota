@@ -2,12 +2,13 @@ from multiprocessing import Process, Queue, Lock, cpu_count
 from typing import Any, Callable
 import threading
 from .models import Task
-from datetime import datetime
 from logging.handlers import QueueHandler
 from lilota.stores import SqlAlchemyTaskStore
 import logging
 
+
 _lock = Lock()
+
 
 def _execute(queue: Queue, registrations: Callable, sentinel: str, db_url: str, logging_queue: Queue, logging_level):
   logger = logging.getLogger("lilota")
@@ -18,47 +19,25 @@ def _execute(queue: Queue, registrations: Callable, sentinel: str, db_url: str, 
   # We get the tasks from the queue. If the sentinel is send we stop.
   try:
     for id, name in iter(queue.get, sentinel):
-      # We try to get the registered class and initialize the task
-      _lock.acquire()
       try:
         logger.debug(f"Instantiate the task using the id {id} and the registered name '{name}'")
 
-        # Load task infos from the store
-        task: Task = store.get_by_id(id)
-
         # Get the function to execute
         func = registrations[name]
-      except Exception as ex:
-        logger.exception(str(ex))
-      finally:
-        _lock.release()
 
-      # Run the function
-      try:
-        logger.info(f"Start function (name: '{task.name}', id: {task.id})")
-        store.set_start(task.id)
-        start_time = datetime.now()
+        # Start the task
+        task: Task = store.start_task(id)
+        
+        # Execute the function
         result = func(task.input)
-        end_time = datetime.now()
-        formatted_time = get_elapsed_time(start_time, end_time)
-        store.set_output(task.id, result)
-        logger.info(f"Function executed (name: '{task.name}', id: {task.id}, elapsed time: {formatted_time})")
+
+        # Set the output
+        store.end_task_success(task.id, result)
       except Exception as ex:
+        store.end_task_failure(task.id, ex)
         logger.exception(str(ex))
-      finally:
-        store.set_end(task.id)
   except Exception as ex:
     logger.exception(str(ex))
-
-
-def get_elapsed_time(start_time, end_time):
-  elapsed_time = end_time - start_time
-  total_seconds = elapsed_time.total_seconds()
-  return "{:02}:{:02}:{:06.3f}".format(
-    int(total_seconds // 3600),  # hours
-    int((total_seconds % 3600) // 60),  # minutes
-    total_seconds % 60  # seconds
-  )
 
 
 def logging_thread(queue: Queue):
@@ -69,6 +48,7 @@ def logging_thread(queue: Queue):
     if message is None:
       break
     logger.handle(message)
+
 
 
 class TaskRunner():
@@ -154,7 +134,7 @@ class TaskRunner():
       _lock.release()
 
 
-  def add(self, name: str, input: Any):
+  def add(self, name: str, input: Any) -> int:
     # Check that the task runner is started
     _lock.acquire()
     try:
@@ -167,12 +147,16 @@ class TaskRunner():
     try:
       # Save the task infos in the store
       self._logger.debug(f"Save task inside the store (name: '{name}', input: {input})")
-      id = self._store.insert(name, input)
+      id = self._store.create_task(name, input)
 
       # Add infos to the queue
       self._input_queue.put((id, name))
+
+      # return the id of the task
+      return id
     except Exception as ex:
       self._logger.exception(str(ex))
+      raise ex
     finally:
       _lock.release()
 

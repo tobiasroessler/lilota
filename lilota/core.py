@@ -1,5 +1,4 @@
 from typing import Callable, Type, Optional, Dict, Any
-from pydantic import BaseModel
 from multiprocessing import cpu_count
 from lilota.runner import TaskRunner
 from lilota.db.alembic import upgrade_db
@@ -71,8 +70,8 @@ class Lilota:
     name: str,
     func: Callable,
     *,
-    input_model: Optional[Type[BaseModel]] = None,
-    output_model: Optional[Type[BaseModel]] = None,
+    input_model: Optional[Type[Any]] = None,
+    output_model: Optional[Type[Any]] = None,
   ):
     if name in self._registry:
       raise RuntimeError(f"Task {name!r} is already registered")
@@ -110,8 +109,8 @@ class Lilota:
     self._runner.start()
 
 
-  def schedule(self, name: str, input_model: Any):
-    self._runner.add(name, input_model)
+  def schedule(self, name: str, input_model: Any) -> int:
+    return self._runner.add(name, input_model)
 
 
   def stop(self):
@@ -120,6 +119,10 @@ class Lilota:
 
   def get_all_tasks(self):
     return self._runner._store.get_all_tasks()
+  
+
+  def get_task_by_id(self, id: int):
+    return self._runner._store.get_task_by_id(id)
   
 
   def _get_input(self, raw_input, input_model) -> Any:

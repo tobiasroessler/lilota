@@ -2,6 +2,7 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from alembic import command
+from dataclasses import dataclass
 from unittest import TestCase, main
 from multiprocessing import cpu_count
 from pydantic import BaseModel
@@ -21,12 +22,43 @@ class AddOutput(BaseModel):
   sum: int
 
 
+@dataclass
+class AddInputDataclass():
+    a: int
+    b: int
+
+
+@dataclass
+class AddOutputDataclass():
+  sum: int
+
+
+class AddInputInvalid():
+  a: int
+  b: int
+
+  def __init__(self, a: int, b: int):
+    self.a = a
+    self.b = b
+
+
+class AddOutputInvalid():
+  sum: int
+
+  def __init__(self, sum: int):
+    self.sum = sum
+
+
 def add(data: AddInput) -> AddOutput:
   return AddOutput(sum=data.a + data.b)
 
 
 def add_with_exception(data: AddInput) -> AddOutput:
   return AddOutput(sum=data.a + data.b)
+
+
+def add_with_dataclasses(data: AddInputDataclass) -> AddOutputDataclass:
+  return AddOutputDataclass(sum=data.a + data.b)
 
 
 class LilotaTestCase(TestCase):
@@ -193,21 +225,18 @@ class LilotaTestCase(TestCase):
     self.assertEqual(str(context.exception), "The task runner must be started first")
 
 
-  def test_add___add_1_task___should_calculate_the_result(self):
+  def test_add___add_1_task_Using_Pydantic___should_calculate_the_result(self):
     # Arrange
     lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
     lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
     lilota.start()
 
     # Act
-    lilota.schedule("add", AddInput(a=1, b=2))
+    id = lilota.schedule("add", AddInput(a=1, b=2))
 
     # Assert
     lilota.stop()
-    tasks = lilota.get_all_tasks()
-    self.assertIsNotNone(tasks)
-    self.assertEqual(len(tasks), 1)
-    task = tasks[0]
+    task = lilota.get_task_by_id(id)
     self.assertEqual(task.progress_percentage, 100)
     number1 = task.input['a']
     number2 = task.input['b']
@@ -215,42 +244,62 @@ class LilotaTestCase(TestCase):
     self.assertEqual(number1 + number2, result)
 
 
+  def test_add___add_1_task_Using_Dataclasses___should_calculate_the_result(self):
+    # Arrange
+    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota._register(name="add_with_dataclasses", func=add_with_dataclasses, input_model=AddInputDataclass, output_model=AddOutputDataclass)
+    lilota.start()
+
+    # Act
+    id = lilota.schedule("add_with_dataclasses", AddInputDataclass(a=1, b=2))
+
+    # Assert
+    lilota.stop()
+    task = lilota.get_task_by_id(id)
+    self.assertEqual(task.progress_percentage, 100)
+    number1 = task.input['a']
+    number2 = task.input['b']
+    result = task.output['sum']
+    self.assertEqual(number1 + number2, result)
+
+
+  def test_add___add_1_task_Using_Invalid_Model___should_calculate_the_result(self):
+    # Arrange
+    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota._register(name="add_with_invalid_model", func=add_with_dataclasses, input_model=AddInputInvalid, output_model=AddOutputInvalid)
+    lilota.start()
+
+    # Act & Assert
+    try:
+      lilota.schedule("add_with_invalid_model", AddInputInvalid(a=1, b=2))
+    except TypeError as ex:
+      self.assertEqual(str(ex), "Unsupported type: AddInputInvalid. Expected BaseModel, dataclass, or dict.")
+    finally:
+      lilota.stop()
+
+
   def test_add___add_5000_tasks___should_calculate_the_results(self):
     # Arrange
+    ids = []
     lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
     lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)  
     lilota.start()
 
     # Act
     for i in range(1, 5001):
-      lilota.schedule("add", AddInput(a=i, b=i))
+      id = lilota.schedule("add", AddInput(a=i, b=i))
+      ids.append(id)
 
     # Assert
     lilota.stop()
-    tasks = lilota.get_all_tasks()
-    self.assertIsNotNone(tasks)
-    self.assertGreaterEqual(len(tasks), 5000)
+    self.assertEqual(len(ids), 5000)
 
-    for task in tasks:
+    for id in ids:
+      task = lilota.get_task_by_id(id)
       number1 = task.input['a']
       number2 = task.input['b']
       result = task.output['sum']
       self.assertEqual(number1 + number2, result)
-
-
-  def test_logging___exception_task___should_raise_exception(self):
-    # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
-    lilota._register(name="add_with_exception", func=add_with_exception, input_model=AddInput, output_model=AddOutput)  
-    lilota.start()
-
-    # Act
-    lilota.schedule("add_with_exception", None)
-
-    # Assert
-    lilota.stop()
-    tasks = lilota.get_all_tasks()
-    self.assertIsNotNone(tasks)
   
 
 if __name__ == '__main__':
