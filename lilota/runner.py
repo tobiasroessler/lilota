@@ -1,7 +1,7 @@
 from multiprocessing import Process, Queue, Lock, cpu_count
-from typing import Any, Callable
+from typing import Any
 import threading
-from .models import Task
+from lilota.models import Task, RegisteredTask, TaskProgress
 from logging.handlers import QueueHandler
 from lilota.stores import SqlAlchemyTaskStore
 import logging
@@ -10,7 +10,7 @@ import logging
 _lock = Lock()
 
 
-def _execute(queue: Queue, registrations: Callable, sentinel: str, db_url: str, logging_queue: Queue, logging_level):
+def _execute(queue: Queue, registrations: dict[str, RegisteredTask], sentinel: str, db_url: str, logging_queue: Queue, logging_level):
   logger = logging.getLogger("lilota")
   logger.addHandler(QueueHandler(logging_queue))
   logger.setLevel(logging_level)
@@ -23,13 +23,13 @@ def _execute(queue: Queue, registrations: Callable, sentinel: str, db_url: str, 
         logger.debug(f"Instantiate the task using the id {id} and the registered name '{name}'")
 
         # Get the function to execute
-        func = registrations[name]
+        registered_task = registrations[name]
 
         # Start the task
         task: Task = store.start_task(id)
         
         # Execute the function
-        result = func(task.input)
+        result = _execute_task(registered_task, task, store)
 
         # Set the output
         store.end_task_success(task.id, result)
@@ -38,6 +38,13 @@ def _execute(queue: Queue, registrations: Callable, sentinel: str, db_url: str, 
         logger.exception(str(ex))
   except Exception as ex:
     logger.exception(str(ex))
+
+
+def _execute_task(registered_task: RegisteredTask, task: Task, store: SqlAlchemyTaskStore):
+  task_progress: TaskProgress = None 
+  if not registered_task.task_progress is None:
+    task_progress = TaskProgress(task.id, store.set_progress)
+  return registered_task(task.input, task_progress)
 
 
 def logging_thread(queue: Queue):
@@ -65,7 +72,7 @@ class TaskRunner():
     self._db_url = db_url
     self._number_of_processes = min(number_of_processes, cpu_count())
     self._store = SqlAlchemyTaskStore(db_url)
-    self._registrations: dict[str, Callable] = {}
+    self._registrations: dict[str, RegisteredTask] = {}
     self._input_queue = None
     self._logger = logging.getLogger(self.LOGGER_NAME)
     self._logging_queue = None
@@ -76,29 +83,19 @@ class TaskRunner():
     self._is_started = False
 
 
-  def register(self, name: str, func: Callable):
+  def register(self, name: str, registered_task: RegisteredTask):
+    # Check that the task runner is not started
+    if self._is_started:
+      raise Exception("It is not allowed to register functions after the task runner was started. Stop the runner first using the stop() method.")
     
-    #_lock.acquire()
-    try:
-      # Check that the task runner is not started
-      if self._is_started:
-        raise Exception("It is not allowed to register functions after the task runner was started. Stop the runner first using the stop() method.")
-      
-      # Register the function
-      self._registrations[name] = func
-    finally:
-      pass
-      #_lock.release()
+    # Register the function
+    self._registrations[name] = registered_task
 
 
   def start(self):
     # Check if the task runner is already started
-    _lock.acquire()
-    try:
-      if self._is_started:
-        raise Exception("The task runner is already started")
-    finally:
-      _lock.release()
+    if self._is_started:
+      raise Exception("The task runner is already started")
     
     # Initialize the queue
     self._input_queue = Queue()

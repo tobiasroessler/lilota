@@ -1,7 +1,8 @@
-from typing import Any
+from typing import Any, Callable, Type, Optional, Any
 from sqlalchemy import String, DateTime, JSON, Enum as SqlEnum
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column
 from datetime import datetime, timezone
+from dataclasses import is_dataclass, asdict
 from enum import Enum
 
 
@@ -14,6 +15,69 @@ class TaskStatus(str, Enum):
   COMPLETED = "completed"
   FAILED = "failed"
   CANCELLED = "cancelled"
+
+
+
+class TaskProgress:
+
+  def __init__(self, task_id: int, set_progress: Callable[[int, int], None]):
+    self.task_id = task_id
+    self.set_progress = set_progress
+
+  def set(self, progress: int):
+    self.set_progress(self.task_id, progress)
+
+
+
+class RegisteredTask:
+
+  def __init__(self, func: Callable, input_model: Optional[Type], output_model: Optional[Type], task_progress: Optional[TaskProgress]):
+    self.func = func
+    self.input_model = input_model
+    self.output_model = output_model
+    self.task_progress = task_progress
+
+
+  def __call__(self, raw_input: Any, task_progress: TaskProgress):
+    # Deserialize input
+    input_value = self._deserialize_input(raw_input)
+
+    # Execute the function
+    if task_progress is None:
+      result = self.func(input_value)
+    else:
+      result = self.func(input_value, task_progress)
+
+    # Serialize output to JSON-safe dict
+    return self._serialize_output(result)
+
+
+  def _deserialize_input(self, raw_input: Any):
+    if not self.input_model:
+      return raw_input
+    if isinstance(raw_input, self.input_model):
+      return raw_input
+    if hasattr(self.input_model, "model_validate"):  # Pydantic
+      return self.input_model.model_validate(raw_input)
+    if is_dataclass(self.input_model):
+      return self.input_model(**raw_input)
+    raise TypeError(f"Unsupported input_model type: {self.input_model}")
+
+
+  def _serialize_output(self, output: Any):
+    if not self.output_model:
+      return output
+    if isinstance(output, self.output_model):
+      if hasattr(output, "model_dump"):  # Pydantic
+        return output.model_dump()
+      if is_dataclass(output):
+        return asdict(output)
+    if hasattr(self.output_model, "model_validate"):  # Pydantic
+      return self.output_model.model_validate(output).model_dump()
+    if is_dataclass(self.output_model):
+      return self.output_model(**output)
+    return output
+
 
 
 class Task(Base):

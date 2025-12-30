@@ -59,7 +59,6 @@ class SqlAlchemyTaskStore(TaskStoreBase):
     with self._get_session() as session:
       with session.begin():
         session.add(task)
-        #session.commit()
 
     return task.id
 
@@ -115,6 +114,16 @@ class SqlAlchemyTaskStore(TaskStoreBase):
         task.progress_percentage = 100
         task.status = TaskStatus.FAILED
         task.end_date_time = datetime.now(timezone.utc)
+
+
+  def delete_task_by_id(self, id: int):
+    with self._get_session() as session:
+      with session.begin():
+        task = session.get(Task, id)
+        if task is None:
+          return False
+        session.delete(task)
+    return True
 
 
   def _get_engine(self):
