@@ -49,8 +49,10 @@ class SqlAlchemyTaskStore(TaskStoreBase):
     self._Session = None
 
 
-  def create_task(self, name: str, input: Any):
-    input = normalize_data(input)
+  def create_task(self, name: str, input: Any = None):
+    if not input is None:
+      input = normalize_data(input)
+
     task = Task(
       name=name,
       input=input,
@@ -96,7 +98,8 @@ class SqlAlchemyTaskStore(TaskStoreBase):
 
 
   def end_task_success(self, id: int, output: Any):
-    output = normalize_data(output)
+    if not output is None:
+      output = normalize_data(output)
 
     with self._get_session() as session:
       with session.begin():

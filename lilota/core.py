@@ -69,7 +69,7 @@ class Lilota:
     self._runner.start()
 
 
-  def schedule(self, name: str, input_model: Any) -> int:
+  def schedule(self, name: str, input_model: Any = None) -> int:
     return self._runner.add(name, input_model)
 
 

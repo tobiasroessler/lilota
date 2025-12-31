@@ -131,17 +131,13 @@ class TaskRunner():
       _lock.release()
 
 
-  def add(self, name: str, input: Any) -> int:
-    # Check that the task runner is started
+  def add(self, name: str, input: Any = None) -> int:
     _lock.acquire()
     try:
+      # Check that the task runner is started
       if not self._is_started:
         raise Exception("The task runner must be started first")
-    finally:
-      _lock.release()
-
-    _lock.acquire()
-    try:
+      
       # Save the task infos in the store
       self._logger.debug(f"Save task inside the store (name: '{name}', input: {input})")
       id = self._store.create_task(name, input)

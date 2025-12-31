@@ -44,9 +44,15 @@ class RegisteredTask:
 
     # Execute the function
     if task_progress is None:
-      result = self.func(input_value)
+      if input_value is None:
+        result = self.func()
+      else:
+        result = self.func(input_value)
     else:
-      result = self.func(input_value, task_progress)
+      if input_value is None:
+        result = self.func(task_progress)
+      else:
+        result = self.func(input_value, task_progress)
 
     # Serialize output to JSON-safe dict
     return self._serialize_output(result)
