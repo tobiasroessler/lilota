@@ -2,6 +2,7 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from lilota.core import Lilota
+from lilota.models import Task
 from pydantic import BaseModel
 
 
@@ -23,10 +24,11 @@ def add(data: AddInput) -> AddOutput:
 
 def main():
   lilota.start()
-  lilota.schedule("add", AddInput(a=2, b=3))
+  task_id = lilota.schedule("add", AddInput(a=2, b=3))
   lilota.stop()
-  tasks = lilota.get_all_tasks()
-  print(tasks)
+  task: Task = lilota.get_task_by_id(task_id)
+  print("We add the numbers 2 and 3: ")
+  print(task.output)
 
 
 if __name__ == "__main__":
