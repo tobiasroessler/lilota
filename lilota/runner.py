@@ -10,11 +10,11 @@ import logging
 _lock = Lock()
 
 
-def _execute(queue: Queue, registrations: dict[str, RegisteredTask], sentinel: str, db_url: str, logging_queue: Queue, logging_level):
+def _execute(queue: Queue, registrations: dict[str, RegisteredTask], sentinel: str, db_url: str, logging_queue: Queue, logging_level, set_progress_manually: bool):
   logger = logging.getLogger("lilota")
   logger.addHandler(QueueHandler(logging_queue))
   logger.setLevel(logging_level)
-  store = SqlAlchemyTaskStore(db_url=db_url)
+  store = SqlAlchemyTaskStore(db_url=db_url, set_progress_manually=set_progress_manually)
   
   # We get the tasks from the queue. If the sentinel is send we stop.
   try:
@@ -64,13 +64,14 @@ class TaskRunner():
   LOGGER_NAME = "lilota"
   LOGGING_FORMATTER_DEFAULT = "%(asctime)s [PID %(process)d]: [%(levelname)s] - %(message)s"
   
-  #def __init__(self, store: TaskStoreBase, number_of_processes: int = cpu_count(), logging_formatter = LOGGING_FORMATTER_DEFAULT, logging_level = logging.DEBUG):
-  def __init__(self, db_url: str, number_of_processes: int = cpu_count(), logging_formatter = LOGGING_FORMATTER_DEFAULT, logging_level = logging.DEBUG):
+
+  def __init__(self, db_url: str, number_of_processes: int = cpu_count(), set_progress_manually: bool = False, logging_formatter = LOGGING_FORMATTER_DEFAULT, logging_level = logging.DEBUG):
     if not isinstance(number_of_processes, int):
       raise TypeError("'number_of_processes' is not of type int")
     
     self._db_url = db_url
     self._number_of_processes = min(number_of_processes, cpu_count())
+    self._set_progress_manually = set_progress_manually
     self._store = SqlAlchemyTaskStore(db_url)
     self._registrations: dict[str, RegisteredTask] = {}
     self._input_queue = None
@@ -118,8 +119,7 @@ class TaskRunner():
       self._is_started = True
 
       for _ in range(self._number_of_processes):
-        # p = Process(target=_execute, args=(self._input_queue, self._registrations, self.SENTINEL, self._store, self._logging_queue, self._logging_level), daemon=True)
-        p = Process(target=_execute, args=(self._input_queue, self._registrations, self.SENTINEL, self._db_url, self._logging_queue, self._logging_level), daemon=True)
+        p = Process(target=_execute, args=(self._input_queue, self._registrations, self.SENTINEL, self._db_url, self._logging_queue, self._logging_level, self._set_progress_manually), daemon=True)
         p.start()
         self._processes.append((p, _execute))
         self._logger.debug(f"Process started (PID: {p.pid})")

@@ -7,7 +7,7 @@ from lilota.db.alembic import upgrade_db
 
 class Lilota:
 
-  def __init__(self, name: str, db_url: str, number_of_processes = cpu_count()):
+  def __init__(self, name: str, db_url: str, number_of_processes = cpu_count(), set_progress_manually: bool = False):
     self._name = name
     self._registry: Dict[str, RegisteredTask] = {}
 
@@ -15,7 +15,7 @@ class Lilota:
     upgrade_db(db_url)
 
     # Initialize the task runner
-    self._runner = TaskRunner(db_url, number_of_processes=number_of_processes)
+    self._runner = TaskRunner(db_url, number_of_processes=number_of_processes, set_progress_manually=set_progress_manually)
 
 
   def _register(

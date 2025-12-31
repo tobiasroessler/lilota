@@ -42,8 +42,9 @@ class TaskStoreBase(ABC):
 
 class SqlAlchemyTaskStore(TaskStoreBase):
 
-  def __init__(self, db_url: str):
+  def __init__(self, db_url: str, set_progress_manually: bool = False):
     self._db_url = db_url
+    self._set_progress_manually = set_progress_manually
     self._engine = None
     self._Session = None
 
@@ -101,9 +102,7 @@ class SqlAlchemyTaskStore(TaskStoreBase):
       with session.begin():
         task = self._load_task(session, id)
         task.output = output
-        task.progress_percentage = 100
-        task.status = TaskStatus.COMPLETED
-        task.end_date_time = datetime.now(timezone.utc)
+        self._complete_progress(task, TaskStatus.COMPLETED)
 
 
   def end_task_failure(self, id: int, ex: Exception):
@@ -111,9 +110,7 @@ class SqlAlchemyTaskStore(TaskStoreBase):
       with session.begin():
         task = self._load_task(session, id)
         task.exception = exception_to_dict(ex)
-        task.progress_percentage = 100
-        task.status = TaskStatus.FAILED
-        task.end_date_time = datetime.now(timezone.utc)
+        self._complete_progress(task, TaskStatus.FAILED)
 
 
   def delete_task_by_id(self, id: int):
@@ -124,6 +121,13 @@ class SqlAlchemyTaskStore(TaskStoreBase):
           return False
         session.delete(task)
     return True
+  
+
+  def _complete_progress(self, task: Task, tasl_status: TaskStatus):
+    if not self._set_progress_manually:
+      task.progress_percentage = 100
+    task.status = tasl_status
+    task.end_date_time = datetime.now(timezone.utc)
 
 
   def _get_engine(self):

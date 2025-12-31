@@ -253,7 +253,7 @@ class LilotaTestCase(TestCase):
 
   def test_add___with_taskprogress_object_passed___should_have_registered_task(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1, set_progress_manually=True)
     lilota._register(name="add_with_taskprogress", func=add_with_taskprogress, input_model=AddInput, output_model=AddOutput, task_progress=TaskProgress)
     lilota.start()
 
@@ -262,6 +262,8 @@ class LilotaTestCase(TestCase):
 
     # Assert
     lilota.stop()
+    task: Task = lilota.get_task_by_id(id)
+    self.assertEqual(task.progress_percentage, 50)
 
 
   def test_add___add_1_task_using_dataclasses___should_calculate_the_result(self):
