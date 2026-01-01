@@ -69,6 +69,18 @@ def hello_world():
   print("Hello Word")
 
 
+def only_input_model(data: AddInput) -> None:
+  print("Hello World")
+
+
+def only_output_model() -> AddOutput:
+  return AddOutput(sum=3)
+
+
+def only_taskprogress(task_progress: TaskProgress) -> None:
+  task_progress.set(50)
+
+
 class LilotaTestCase(TestCase):
 
   NAME = "My Server"
@@ -251,6 +263,61 @@ class LilotaTestCase(TestCase):
     self.assertEqual(task.progress_percentage, 100)
     self.assertIsNone(task.input)
     self.assertIsNone(task.output)
+
+
+  def test___add_1_task_with_only_input_model___should_execute_task(self):
+    # Arrange
+    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota._register(name="only_input_model", func=only_input_model, input_model=AddInput)
+    lilota.start()
+
+    # Act
+    id = lilota.schedule("only_input_model", AddInput(a=1, b=2))
+
+    # Assert
+    lilota.stop()
+    task = lilota.get_task_by_id(id)
+    self.assertEqual(task.status, TaskStatus.COMPLETED)
+    self.assertIsNone(task.exception)
+    self.assertEqual(task.progress_percentage, 100)
+    self.assertIsNotNone(task.input)
+    self.assertIsNone(task.output)
+
+
+  def test___add_1_task_with_only_output_model___should_execute_task(self):
+    # Arrange
+    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota._register(name="only_output_model", func=only_output_model, output_model=AddOutput)
+    lilota.start()
+
+    # Act
+    id = lilota.schedule("only_output_model")
+
+    # Assert
+    lilota.stop()
+    task = lilota.get_task_by_id(id)
+    self.assertEqual(task.status, TaskStatus.COMPLETED)
+    self.assertIsNone(task.exception)
+    self.assertEqual(task.progress_percentage, 100)
+    self.assertIsNone(task.input)
+    self.assertIsNotNone(task.output)
+    result = task.output['sum']
+    self.assertEqual(3, result)
+
+
+  def test___add_1_task_with_only_taskprogress___should_execute_task(self):
+    # Arrange
+    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1, set_progress_manually=True)
+    lilota._register(name="only_taskprogress", func=only_taskprogress, task_progress=TaskProgress)
+    lilota.start()
+
+    # Act
+    id = lilota.schedule("only_taskprogress")
+
+    # Assert
+    lilota.stop()
+    task: Task = lilota.get_task_by_id(id)
+    self.assertEqual(task.progress_percentage, 50)
 
 
   def test_add___add_1_task_using_pydantic___should_calculate_the_result(self):
