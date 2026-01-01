@@ -29,6 +29,7 @@ readme_renderer==43.0
 requests==2.32.3
 requests-toolbelt==1.0.0
 rfc3986==2.0.0
+rich==14.2.0
 setuptools==70.0.0
 SQLAlchemy==2.0.44
 twine==5.1.0
