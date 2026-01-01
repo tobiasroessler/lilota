@@ -1,21 +1,23 @@
 import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from dataclasses import dataclass
 from lilota.core import Lilota
 from lilota.models import Task
-from pydantic import BaseModel
 
 
-class AddInput(BaseModel):
+@dataclass
+class AddInput():
     a: int
     b: int
 
 
-class AddOutput(BaseModel):
+@dataclass
+class AddOutput():
   sum: int
 
 
-lilota = Lilota(name="My Server", db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample")
+lilota = Lilota(name="Default", db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample")
 
 @lilota.register("add", input_model=AddInput, output_model=AddOutput)
 def add(data: AddInput) -> AddOutput:

@@ -1,6 +1,6 @@
 # lilota
 
-**lilota** is a lightweight Python library for running long-running
+**lilota** is a lightweight Python library for executing long-running
 tasks in the background without the complexity of full task queue
 systems like Celery or RabbitMQ.
 
@@ -19,6 +19,7 @@ setup and overhead.
     - [Schedule a task](#schedule-a-task)
   - [Task persistence](#task-persistence)
   - [Shutdown](#shutdown)
+  - [Full example](#full-example)
   - [License](#license)
 
 
@@ -58,6 +59,8 @@ pip install lilota
 
 ``` python
 from dataclasses import dataclass
+from lilota.core import Lilota
+from lilota.models import Task
 
 @dataclass
 class AddInput:
@@ -73,8 +76,6 @@ class AddOutput:
 ### Create a lilota instance
 
 ``` python
-from lilota import Lilota
-
 lilota = Lilota(
   name="My Server",
   db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample"
@@ -107,7 +108,7 @@ task_id = lilota.schedule("add", AddInput(a=2, b=3))
 
 ## Task persistence
 
-**schedule** will directly execute our function in a separate process. Information about the executed task are stored inside the database in the **task** table. Is consits of the following columns:
+**schedule** will directly execute our function in a separate process. Information about the executed task are stored inside the database in the **task** table:
 
 | Columns | Notes |
 | ------- | ----- |
@@ -130,6 +131,11 @@ lilota.stop()
 ```
 
 lilota will wait for running tasks to finish before exiting.
+
+
+## Full example
+
+The full example can be found here: https://github.com/tobiasroessler/lilota-sample/blob/main/src/2-add-two-numbers.py
 
 
 ## License
