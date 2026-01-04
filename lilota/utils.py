@@ -26,5 +26,5 @@ def normalize_data(data: Any) -> dict:
     return asdict(data)
 
   raise TypeError(
-    f"Unsupported type: {type(data).__name__}. Expected BaseModel, dataclass, or dict."
+    f"Unsupported type: {type(data).__name__}. Expected ModelProtocol, dataclass, or dict."
   )
