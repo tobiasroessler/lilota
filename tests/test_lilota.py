@@ -4,8 +4,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from alembic import command
 from dataclasses import dataclass
 from unittest import TestCase, main
+from typing import Any
 from multiprocessing import cpu_count
-from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from lilota.core import Lilota
@@ -13,13 +13,30 @@ from lilota.models import Task, TaskStatus, TaskProgress
 from lilota.db.alembic import get_alembic_config
 
 
-class AddInput(BaseModel):
-    a: int
-    b: int
+class AddInput():
+  def __init__(self, a: int, b: int) -> None:
+    self.a = a
+    self.b = b
+
+  def as_dict(self) -> dict[str, Any]:
+    return {
+      "a": self.a,
+      "b": self.b,
+    }
 
 
-class AddOutput(BaseModel):
-  sum: int
+class AddOutput():
+  def __init__(self, sum: int) -> None:
+    self.sum = sum
+
+  def as_dict(self) -> dict[str, Any]:
+    return {
+      "sum": self.sum
+    }
+  
+  # @classmethod
+  # def from_dict(cls, data: dict[str, Any]):
+  #   return cls(**data)
 
 
 @dataclass
@@ -320,7 +337,7 @@ class LilotaTestCase(TestCase):
     self.assertEqual(task.progress_percentage, 50)
 
 
-  def test_add___add_1_task_using_pydantic___should_calculate_the_result(self):
+  def test_add___add_1_task_using_model_protocol___should_calculate_the_result(self):
     # Arrange
     lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
     lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)

@@ -1,4 +1,4 @@
-from typing import Any, Callable, Type, Optional, Any
+from typing import Any, Callable, Type, TypeVar, Optional, Any, Protocol, runtime_checkable
 from sqlalchemy import String, DateTime, JSON, Enum as SqlEnum
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column
 from datetime import datetime, timezone
@@ -26,6 +26,16 @@ class TaskProgress:
 
   def set(self, progress: int):
     self.set_progress(self.task_id, progress)
+
+
+
+T = TypeVar("T", bound="ModelProtocol")
+
+@runtime_checkable
+class ModelProtocol(Protocol):
+
+  def as_dict(self) -> dict[str, Any]:
+    pass
 
 
 
@@ -63,8 +73,8 @@ class RegisteredTask:
       return raw_input
     if isinstance(raw_input, self.input_model):
       return raw_input
-    if hasattr(self.input_model, "model_validate"):  # Pydantic
-      return self.input_model.model_validate(raw_input)
+    if isinstance(self.input_model, ModelProtocol):
+      return self.input_model(**raw_input)
     if is_dataclass(self.input_model):
       return self.input_model(**raw_input)
     raise TypeError(f"Unsupported input_model type: {self.input_model}")
@@ -73,13 +83,11 @@ class RegisteredTask:
   def _serialize_output(self, output: Any):
     if not self.output_model:
       return output
+    if isinstance(output, ModelProtocol):
+      return output.as_dict()
     if isinstance(output, self.output_model):
-      if hasattr(output, "model_dump"):  # Pydantic
-        return output.model_dump()
       if is_dataclass(output):
         return asdict(output)
-    if hasattr(self.output_model, "model_validate"):  # Pydantic
-      return self.output_model.model_validate(output).model_dump()
     if is_dataclass(self.output_model):
       return self.output_model(**output)
     return output

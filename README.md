@@ -20,7 +20,6 @@ setup and overhead.
   - [Task persistence](#task-persistence)
   - [Shutdown](#shutdown)
   - [Full example](#full-example)
-  - [License](#license)
 
 
 ## Features
@@ -136,8 +135,3 @@ lilota will wait for running tasks to finish before exiting.
 ## Full example
 
 The full example can be found here: https://github.com/tobiasroessler/lilota-sample/blob/main/src/2-add-two-numbers.py
-
-
-## License
-
-MIT

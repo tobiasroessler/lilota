@@ -1,7 +1,7 @@
 import traceback
 from typing import Any
 from dataclasses import is_dataclass, asdict
-from pydantic import BaseModel
+from .models import ModelProtocol
 
 
 def exception_to_dict(ex: Exception) -> dict:
@@ -17,9 +17,9 @@ def normalize_data(data: Any) -> dict:
   if isinstance(data, dict):
     return data
   
-  # Pydantic v2
-  if isinstance(data, BaseModel):
-    return data.model_dump()
+  # ModelProtocol
+  if isinstance(data, ModelProtocol):
+    return data.as_dict()
 
   # Dataclass
   if is_dataclass(data):

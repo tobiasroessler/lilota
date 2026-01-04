@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from .models import Task, TaskStatus
 from datetime import datetime, UTC, timezone
-from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from typing import Any
