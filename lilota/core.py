@@ -7,8 +7,7 @@ from lilota.db.alembic import upgrade_db
 
 class Lilota:
 
-  def __init__(self, name: str, db_url: str, number_of_processes = cpu_count(), set_progress_manually: bool = False):
-    self._name = name
+  def __init__(self, db_url: str, number_of_processes = cpu_count(), set_progress_manually: bool = False):
     self._registry: Dict[str, RegisteredTask] = {}
 
     # Upgrade the database

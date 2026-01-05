@@ -59,7 +59,6 @@ pip install lilota
 ``` python
 from dataclasses import dataclass
 from lilota.core import Lilota
-from lilota.models import Task
 
 @dataclass
 class AddInput:
@@ -76,10 +75,14 @@ class AddOutput:
 
 ``` python
 lilota = Lilota(
-  name="My Server",
   db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample"
 )
 ```
+
+In this example we use a url to a **postgres** database. **lilota** uses **SQLAlchemy** and therefore all
+databases that are supported by SQLAlchemy can be used here.
+
+> **Note:** SQLite is an excellent database in many scenarios, but for a multiprocessing application like lilota, it has fundamental limitations that often make it a poor fit.
 
 
 ### Register a background task
@@ -129,7 +132,7 @@ task_id = lilota.schedule("add", AddInput(a=2, b=3))
 lilota.stop()
 ```
 
-lilota will wait for running tasks to finish before exiting.
+**lilota** will wait for running tasks to finish before exiting.
 
 
 ## Full example

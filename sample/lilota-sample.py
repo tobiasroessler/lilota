@@ -17,7 +17,7 @@ class AddOutput():
   sum: int
 
 
-lilota = Lilota(name="Default", db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample")
+lilota = Lilota(db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample")
 
 @lilota.register("add", input_model=AddInput, output_model=AddOutput)
 def add(data: AddInput) -> AddOutput:

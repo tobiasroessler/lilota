@@ -100,7 +100,6 @@ def only_taskprogress(task_progress: TaskProgress) -> None:
 
 class LilotaTestCase(TestCase):
 
-  NAME = "My Server"
   DB_URL = "postgresql+psycopg://postgres:postgres@localhost:5433/lilota_test"
 
   @classmethod
@@ -131,7 +130,7 @@ class LilotaTestCase(TestCase):
 
   def test_register___nothing_is_registered___should_not_have_any_registration(self):
     # Arrange & Act
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1)
 
     # Assert
     self.assertEqual(len(lilota._runner._registrations), 0)
@@ -139,7 +138,7 @@ class LilotaTestCase(TestCase):
 
   def test_register___one_class_is_registered___should_have_one_registration(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1)
 
     # Act
     lilota._register("add_task", AddInput)
@@ -150,7 +149,7 @@ class LilotaTestCase(TestCase):
 
   def test_register___task_is_already_registered___should_raise_exception(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1)
     lilota._register("add_task", AddInput)
 
     # Act & Assert
@@ -162,7 +161,7 @@ class LilotaTestCase(TestCase):
 
   def test_start___number_of_processes_is_not_set___should_use_cpu_count(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL)
+    lilota = Lilota(LilotaTestCase.DB_URL)
     lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
 
     # Act
@@ -177,7 +176,7 @@ class LilotaTestCase(TestCase):
 
   def test_start___number_of_processes_is_set_to_one___should_use_one(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1)
     lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
 
     # Act
@@ -192,7 +191,7 @@ class LilotaTestCase(TestCase):
 
   def test_start___number_of_processes_is_greater_than_cpu_count___should_use_cpu_count(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1000)
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1000)
     lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
 
     # Act
@@ -207,7 +206,7 @@ class LilotaTestCase(TestCase):
 
   def test_start___but_start_twice___should_raise_exception(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1)
     lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
     lilota.start()
 
@@ -222,7 +221,7 @@ class LilotaTestCase(TestCase):
 
   def test_stop___but_start_was_not_executed___should_raise_exception(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1)
     lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
 
     # Act & Assert
@@ -233,7 +232,7 @@ class LilotaTestCase(TestCase):
 
   def test_stop___start_and_directly_stop___should_shutdown_all_processes(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL)
+    lilota = Lilota(LilotaTestCase.DB_URL)
     lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
     lilota.start()
     self.assertTrue(lilota._runner._is_started)
@@ -253,7 +252,7 @@ class LilotaTestCase(TestCase):
 
   def test_add___but_task_runner_is_not_started___should_raise_exception(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1)
     lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
 
     # Act & Assert
@@ -265,7 +264,7 @@ class LilotaTestCase(TestCase):
 
   def test___add_1_hello_world_task___should_execute_task(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1)
     lilota._register(name="hello_world", func=hello_world)
     lilota.start()
 
@@ -284,7 +283,7 @@ class LilotaTestCase(TestCase):
 
   def test___add_1_task_with_only_input_model___should_execute_task(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1)
     lilota._register(name="only_input_model", func=only_input_model, input_model=AddInput)
     lilota.start()
 
@@ -303,7 +302,7 @@ class LilotaTestCase(TestCase):
 
   def test___add_1_task_with_only_output_model___should_execute_task(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1)
     lilota._register(name="only_output_model", func=only_output_model, output_model=AddOutput)
     lilota.start()
 
@@ -324,7 +323,7 @@ class LilotaTestCase(TestCase):
 
   def test___add_1_task_with_only_taskprogress___should_execute_task(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1, set_progress_manually=True)
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1, set_progress_manually=True)
     lilota._register(name="only_taskprogress", func=only_taskprogress, task_progress=TaskProgress)
     lilota.start()
 
@@ -339,7 +338,7 @@ class LilotaTestCase(TestCase):
 
   def test_add___add_1_task_using_model_protocol___should_calculate_the_result(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1)
     lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
     lilota.start()
 
@@ -360,7 +359,7 @@ class LilotaTestCase(TestCase):
 
   def test_add___with_taskprogress_object_passed___should_have_registered_task(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1, set_progress_manually=True)
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1, set_progress_manually=True)
     lilota._register(name="add_with_taskprogress", func=add_with_taskprogress, input_model=AddInput, output_model=AddOutput, task_progress=TaskProgress)
     lilota.start()
 
@@ -375,7 +374,7 @@ class LilotaTestCase(TestCase):
 
   def test_add___add_1_task_using_dataclasses___should_calculate_the_result(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1)
     lilota._register(name="add_with_dataclasses", func=add_with_dataclasses, input_model=AddInputDataclass, output_model=AddOutputDataclass)
     lilota.start()
 
@@ -396,7 +395,7 @@ class LilotaTestCase(TestCase):
 
   def test_add___add_1_task_using_invalid_model___should_calculate_the_result(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1)
     lilota._register(name="add_with_invalid_model", func=add_with_dataclasses, input_model=AddInputInvalid, output_model=AddOutputInvalid)
     lilota.start()
     id = None
@@ -405,7 +404,7 @@ class LilotaTestCase(TestCase):
     try:
       id = lilota.schedule("add_with_invalid_model", AddInputInvalid(a=1, b=2))
     except TypeError as ex:
-      self.assertEqual(str(ex), "Unsupported type: AddInputInvalid. Expected BaseModel, dataclass, or dict.")
+      self.assertEqual(str(ex), "Unsupported type: AddInputInvalid. Expected ModelProtocol, dataclass, or dict.")
       self.assertIsNone(id)
     finally:
       lilota.stop()
@@ -414,7 +413,7 @@ class LilotaTestCase(TestCase):
   def test_add___add_5000_tasks___should_calculate_the_results(self):
     # Arrange
     ids = []
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1)
     lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)  
     lilota.start()
 
@@ -439,7 +438,7 @@ class LilotaTestCase(TestCase):
 
   def test_add___add_1_task_but_function_raises_exception___should_log_exception(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1)
     lilota._register(name="add_with_exception", func=add_with_exception, input_model=AddInput, output_model=AddOutput)
     lilota.start()
 
@@ -459,7 +458,7 @@ class LilotaTestCase(TestCase):
 
   def test_add___delete_task_by_id___should_delete_task(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.NAME, LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1)
     lilota._register(name="add_with_exception", func=add_with_exception, input_model=AddInput, output_model=AddOutput)
     lilota.start()
 
