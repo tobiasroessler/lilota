@@ -71,12 +71,14 @@ class RegisteredTask:
   def _deserialize_input(self, raw_input: Any):
     if not self.input_model:
       return raw_input
-    if isinstance(raw_input, self.input_model):
-      return raw_input
     if isinstance(self.input_model, ModelProtocol):
       return self.input_model(**raw_input)
     if is_dataclass(self.input_model):
       return self.input_model(**raw_input)
+    if isinstance(raw_input, dict):
+      return raw_input
+    if isinstance(raw_input, self.input_model):
+      return raw_input
     raise TypeError(f"Unsupported input_model type: {self.input_model}")
 
 
