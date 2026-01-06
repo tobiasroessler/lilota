@@ -98,6 +98,14 @@ def only_taskprogress(task_progress: TaskProgress) -> None:
   task_progress.set(50)
 
 
+EXTERNAL_STATE = {"counter": 0}
+
+def task_mutates_external_state() -> dict[str, int]:
+  EXTERNAL_STATE["counter"] += 1
+  return EXTERNAL_STATE
+
+
+
 class LilotaTestCase(TestCase):
 
   DB_URL = "postgresql+psycopg://postgres:postgres@localhost:5433/lilota_test"
@@ -473,7 +481,37 @@ class LilotaTestCase(TestCase):
     self.assertTrue(deleted)
     deleted = lilota.delete_task_by_id(id)
     self.assertFalse(deleted)
-  
+
+
+  def test_add___task_uses_external_mutable_state___state_is_not_shared(self):
+    """
+    External mutable state is copied into worker processes.
+    Mutations inside tasks do NOT affect parent process state.
+    """
+
+    # Arrange
+    self.assertEqual(EXTERNAL_STATE["counter"], 0)
+
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota._register(
+      name="task_mutates_external_state",
+      func=task_mutates_external_state,
+      output_model=dict[str, int]
+    )
+    lilota.start()
+
+    # Act
+    task_id = lilota.schedule("task_mutates_external_state")
+
+    # Assert
+    lilota.stop()
+    task = lilota.get_task_by_id(task_id)
+    self.assertEqual(task.status, TaskStatus.COMPLETED)
+    self.assertEqual(task.output["counter"], 1)
+    # 🔑 Critical assertion:
+    # Parent process state was NOT modified
+    self.assertEqual(EXTERNAL_STATE["counter"], 0)
+
 
 if __name__ == '__main__':
   main()

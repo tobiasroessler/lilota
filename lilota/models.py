@@ -83,6 +83,8 @@ class RegisteredTask:
   def _serialize_output(self, output: Any):
     if not self.output_model:
       return output
+    if isinstance(output, dict):
+      return output
     if isinstance(output, ModelProtocol):
       return output.as_dict()
     if isinstance(output, self.output_model):
