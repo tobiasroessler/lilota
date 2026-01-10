@@ -99,12 +99,12 @@ class RegisteredTask:
 
 
 class Task(Base):
-  __tablename__ = "task"
+  __tablename__ = "lilota_task"
   id: Mapped[int] = mapped_column(primary_key=True)
   name: Mapped[str] = mapped_column(String, nullable=False)
   pid: Mapped[int] = mapped_column(default=0)
   status: Mapped[TaskStatus] = mapped_column(
-    SqlEnum(TaskStatus, name="status"),
+    SqlEnum(TaskStatus, name="lilota_task_status"),
     default=TaskStatus.PENDING,
     nullable=False
   )
