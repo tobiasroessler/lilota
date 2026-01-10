@@ -97,33 +97,24 @@ class TaskRunner():
     # Check if the task runner is already started
     if self._is_started:
       raise Exception("The task runner is already started")
-    
-    # Initialize the queue
-    self._input_queue = Queue()
 
     # Acquire lock
     _lock.acquire()
 
-    # Start the logging thread
-    self._logging_queue = Queue()
-    self._logging_thread = threading.Thread(target=logging_thread, args=(self._logging_queue,))
-    self._logging_thread.start()
-    file_handler = logging.FileHandler("lilota.log")
-    self._logger.addHandler(file_handler)
-    formatter = logging.Formatter(self._logging_formatter)
-    file_handler.setFormatter(formatter)
-    self._logger.setLevel(self._logging_level)
-    
     try:
-      # Start the processes
-      self._is_started = True
+      # Start the logging thread
+      self._start_logging()
+      
+      # Initialize the queue
+      self._input_queue = Queue()
 
-      for _ in range(self._number_of_processes):
-        p = Process(target=_execute, args=(self._input_queue, self._registrations, self.SENTINEL, self._db_url, self._logging_queue, self._logging_level, self._set_progress_manually), daemon=True)
-        p.start()
-        self._processes.append((p, _execute))
-        self._logger.debug(f"Process started (PID: {p.pid})")
+      # Start the processes
+      self._start_processes()
+      self._is_started = True
       self._logger.info(f"lilota started ({self._number_of_processes} process(es) used)")
+
+      # Start unfinished tasks
+      self._restart_unfinished_tasks()
     except Exception as ex:
       self._logger.exception(str(ex))
       raise Exception(f"An error occured when starting the processes: {str(ex)}")
@@ -142,7 +133,7 @@ class TaskRunner():
       self._logger.debug(f"Save task inside the store (name: '{name}', input: {input})")
       id = self._store.create_task(name, input)
 
-      # Add infos to the queue
+      # Add task infos to the queue
       self._input_queue.put((id, name))
 
       # return the id of the task
@@ -198,3 +189,32 @@ class TaskRunner():
     finally:
       self._logger.info("lilota stopped")
       _lock.release()
+
+
+  def _start_logging(self):
+    self._logging_queue = Queue()
+    self._logging_thread = threading.Thread(target=logging_thread, args=(self._logging_queue,))
+    self._logging_thread.start()
+    file_handler = logging.FileHandler("lilota.log")
+    self._logger.addHandler(file_handler)
+    formatter = logging.Formatter(self._logging_formatter)
+    file_handler.setFormatter(formatter)
+    self._logger.setLevel(self._logging_level)
+
+
+  def _start_processes(self):
+    for _ in range(self._number_of_processes):
+      p = Process(target=_execute, args=(self._input_queue, self._registrations, self.SENTINEL, self._db_url, self._logging_queue, self._logging_level, self._set_progress_manually), daemon=True)
+      p.start()
+      self._processes.append((p, _execute))
+      self._logger.debug(f"Process started (PID: {p.pid})")
+
+
+  def _restart_unfinished_tasks(self):
+    # Get all unfinished tasks
+    unfinished_tasks = self._store.get_unfinished_tasks()
+
+    # Schedule all tasks
+    for unfinished_task in unfinished_tasks:
+      # Add task infos to the queue
+      self._input_queue.put((unfinished_task.id, unfinished_task.name))

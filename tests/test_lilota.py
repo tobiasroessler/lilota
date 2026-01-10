@@ -445,10 +445,36 @@ class LilotaTestCase(TestCase):
       lilota.stop()
 
 
-  def test_schedule___add_5000_tasks___should_calculate_the_results(self):
+  def test_schedule___add_1000_tasks_using_one_process___should_calculate_the_results(self):
     # Arrange
     ids = []
     lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)  
+    lilota.start()
+
+    # Act
+    for i in range(1, 1001):
+      id = lilota.schedule("add", AddInput(a=i, b=i))
+      ids.append(id)
+
+    # Assert
+    lilota.stop()
+    self.assertEqual(len(ids), 1000)
+
+    for id in ids:
+      task = lilota.get_task_by_id(id)
+      number1 = task.input['a']
+      number2 = task.input['b']
+      result = task.output['sum']
+      self.assertEqual(number1 + number2, result)
+      self.assertEqual(task.status, TaskStatus.COMPLETED)
+      self.assertIsNone(task.exception)
+
+
+  def test_schedule___add_5000_tasks_using_multiple_processes___should_calculate_the_results(self):
+    # Arrange
+    ids = []
+    lilota = Lilota(LilotaTestCase.DB_URL)
     lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)  
     lilota.start()
 
@@ -538,6 +564,46 @@ class LilotaTestCase(TestCase):
     # 🔑 Critical assertion:
     # Parent process state was NOT modified
     self.assertEqual(EXTERNAL_STATE["counter"], 0)
+
+
+  def test_start___with_unfinished_task___should_schedule_the_task_again(self):
+    # Arrange
+    engine = create_engine(LilotaTestCase.DB_URL)
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+      task = Task(
+        name="add",
+        status=TaskStatus.RUNNING,
+        input={"a": 4, "b": 5},
+        output=None,
+        exception=None,
+        progress_percentage=50
+      )
+      session.add(task)
+      session.commit()
+      task_id = task.id
+    engine.dispose()
+
+    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
+    task = lilota.get_task_by_id(task_id)
+    self.assertEqual(task.status, TaskStatus.RUNNING)
+    self.assertEqual(task.progress_percentage, 50)
+
+    # Act
+    lilota.start()
+
+    # Assert
+    lilota.stop()
+    task = lilota.get_task_by_id(task_id)
+    self.assertEqual(task.status, TaskStatus.COMPLETED)
+    self.assertIsNone(task.exception)
+    self.assertEqual(task.progress_percentage, 100)
+    number1 = task.input['a']
+    number2 = task.input['b']
+    result = task.output['sum']
+    self.assertEqual(number1 + number2, result)
+    lilota.delete_task_by_id(task_id)
 
 
 if __name__ == '__main__':

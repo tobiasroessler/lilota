@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import os
 from .models import Task, TaskStatus
 from datetime import datetime, UTC, timezone
 from sqlalchemy import create_engine
@@ -15,6 +16,10 @@ class TaskStoreBase(ABC):
 
   @abstractmethod
   def get_all_tasks(self) -> list[Task]:
+    pass
+
+  @abstractmethod
+  def get_unfinished_tasks(self) -> list[Task]:
     pass
 
   @abstractmethod
@@ -69,6 +74,17 @@ class SqlAlchemyTaskStore(TaskStoreBase):
     with self._get_session() as session:
       with session.begin():
         return session.query(Task).order_by(Task.id).all()
+      
+
+  def get_unfinished_tasks(self) -> list[Task]:
+    with self._get_session() as session:
+      with session.begin():
+        return (
+          session.query(Task)
+            .filter(Task.status.in_([TaskStatus.PENDING,TaskStatus.RUNNING]))
+            .order_by(Task.id)
+            .all()
+        )
 
 
   def get_task_by_id(self, id: int):
@@ -84,8 +100,11 @@ class SqlAlchemyTaskStore(TaskStoreBase):
     with self._get_session() as session:
       with session.begin():
         task = self._load_task(session, id)
-        task.start_date_time = datetime.now(timezone.utc)
+        task.pid = os.getpid()
         task.status = TaskStatus.RUNNING
+        task.progress_percentage = 0
+        task.start_date_time = datetime.now(timezone.utc)
+        task.end_date_time = None
         return task
 
 
@@ -125,10 +144,10 @@ class SqlAlchemyTaskStore(TaskStoreBase):
     return True
   
 
-  def _complete_progress(self, task: Task, tasl_status: TaskStatus):
+  def _complete_progress(self, task: Task, task_status: TaskStatus):
     if not self._set_progress_manually:
       task.progress_percentage = 100
-    task.status = tasl_status
+    task.status = task_status
     task.end_date_time = datetime.now(timezone.utc)
 
 
