@@ -1,11 +1,12 @@
 from abc import ABC, abstractmethod
 import os
-from .models import Task, TaskStatus
+from .models import Node, NodeType, NodeStatus, Task, TaskStatus
 from datetime import datetime, UTC, timezone
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, update
 from sqlalchemy.orm import sessionmaker
 from typing import Any
 from lilota.utils import exception_to_dict, normalize_data
+from uuid import uuid4
 
 
 class TaskStoreBase(ABC):
@@ -53,6 +54,34 @@ class SqlAlchemyTaskStore(TaskStoreBase):
     self._Session = None
 
 
+  def create_node(self, type: NodeType, status: NodeStatus = NodeStatus.STARTING) -> uuid4:
+    node = Node(
+      type=type,
+      status=status
+    )
+    
+    with self._get_session() as session:
+      with session.begin():
+        session.add(node)
+
+    return node.id
+  
+
+  def get_all_nodes(self):
+    with self._get_session() as session:
+      with session.begin():
+        return session.query(Node).all()
+      
+
+  def get_node_by_id(self, id: uuid4):
+    with self._get_session() as session:
+      with session.begin():
+        node = session.get(Node, id)
+        if node is None:
+          return None
+        return node
+
+
   def create_task(self, name: str, input: Any = None):
     if not input is None:
       input = normalize_data(input)
@@ -68,6 +97,15 @@ class SqlAlchemyTaskStore(TaskStoreBase):
         session.add(task)
 
     return task.id
+  
+
+  def update_node_status(self, id: int, status: NodeStatus):
+    with self._get_session() as session:
+      with session.begin():
+        stmt = (
+          update(Node).where(Node.id == id).values(status = status)
+        )
+        session.execute(stmt)
 
 
   def get_all_tasks(self):
