@@ -108,6 +108,16 @@ class SqlAlchemyTaskStore(TaskStoreBase):
         session.execute(stmt)
 
 
+  def update_node_last_seen_at(self, id: int):
+    with self._get_session() as session:
+      with session.begin():
+        session.execute(
+          update(Node)
+          .where(Node.id == id)
+          .values(last_seen_at = datetime.now(timezone.utc))
+        )
+
+
   def get_all_tasks(self):
     with self._get_session() as session:
       with session.begin():

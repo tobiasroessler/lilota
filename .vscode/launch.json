@@ -8,6 +8,14 @@
       "program": "${workspaceFolder}/sample/lilota-sample.py",
       "args": [],
       "justMyCode": true
+    },
+    {
+      "name": "lilota-scheduler-worker",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/sample/lilota-scheduler-worker-sample.py",
+      "args": [],
+      "justMyCode": true
     }
   ]
 }

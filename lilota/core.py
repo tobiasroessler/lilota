@@ -1,58 +1,100 @@
+from abc import ABC, abstractmethod
 from typing import Callable, Type, Optional, Dict, Any
 from multiprocessing import cpu_count
 from lilota.models import NodeType, NodeStatus, TaskProgress, RegisteredTask
 from lilota.stores import SqlAlchemyTaskStore
 from lilota.runner import TaskRunner
+from lilota.heartbeat import HeartbeatThread
 from lilota.db.alembic import upgrade_db
 import logging
 from uuid import uuid4
 
 
-class LilotaScheduler:
+class LilotaNode(ABC):
 
-  LOGGER_NAME = "lilota_scheduler"
   LOGGING_FORMATTER_DEFAULT = "%(asctime)s [PID %(process)d]: [%(levelname)s] - %(message)s"
 
-  def __init__(self, db_url: str, logging_level = logging.DEBUG, logging_filename = "lilota_scheduler.log"):
-    # Setup logging
-    self._logger = logging.getLogger(self.LOGGER_NAME)
+  def __init__(
+    self,
+    *,
+    db_url: str,
+    node_type: NodeType,
+    logger_name: str,
+    heartbeat_interval_sec: int = 10,
+    logging_level=logging.DEBUG,
+    logging_filename: str):
+
+    self.db_url = db_url
+    self.node_type = node_type
+    self.heartbeat_interval_sec = heartbeat_interval_sec
+    self.node_id = None
+    self._store = None
+    self._heartbeat = None
+
+    self._logger = logging.getLogger(logger_name)
     self._logger.setLevel(logging_level)
-    file_handler = logging.FileHandler(logging_filename)
-    formatter = logging.Formatter(self.LOGGING_FORMATTER_DEFAULT)
-    file_handler.setFormatter(formatter)
-    self._logger.addHandler(file_handler)
 
-    # Upgrade the database
-    self._logger.debug("Upgrade database...")
-    upgrade_db(db_url)
-    self._logger.debug("Database upgraded!")
-
-    # Create the store
-    self._logger.debug("Create store...")
-    self._store = SqlAlchemyTaskStore(db_url)
-    self._logger.debug("Store created!")
-
-    # Create a scheduler node in the database
-    self.node_id = self._store.create_node(NodeType.SCHEDULER, NodeStatus.RUNNING)
+    if not self._logger.handlers:
+      handler = logging.FileHandler(logging_filename)
+      handler.setFormatter(logging.Formatter(self.LOGGING_FORMATTER_DEFAULT))
+      self._logger.addHandler(handler)
 
 
-  def schedule(self, name: str, input: Any = None) -> int:
-    # Save the task infos in the store
-    self._logger.debug(f"Create task (name: '{name}', input: {input})...")
-    id = self._store.create_task(name, input)
-    self._logger.debug(f"Task with id {id} created!")
-    
-    # Return the id of the task
-    return id
-  
+  def start(self):
+    if not self.node_id:
+      # Upgrade the database
+      self._logger.debug("Upgrade database...")
+      upgrade_db(self.db_url)
+      self._logger.debug("Database upgraded!")
+
+      # Create the store
+      self._logger.debug("Create store...")
+      self._store = SqlAlchemyTaskStore(self.db_url)
+      self._logger.debug("Store created!")
+
+      self.node_id = self._store.create_node(self.node_type, NodeStatus.STARTING)
+    else:
+      self._store.update_node_status(self.node_id, NodeStatus.STARTING)
+
+    # Start heartbeat thread
+    self._heartbeat = HeartbeatThread(
+        node_id=self.node_id,
+        update_fn=self._store.update_node_last_seen_at,
+        logger=self._logger,
+        interval_seconds=self.heartbeat_interval_sec,
+    )
+    self._heartbeat.start()
+
+    # Start additional stuff
+    self._on_start()
+
+    # Change status to RUNNING
+    self._store.update_node_status(self.node_id, NodeStatus.RUNNING)
+
+
+  def stop(self):
+    # Change status to STOPPING
+    self._store.update_node_status(self.node_id, NodeStatus.STOPPING)
+
+    # Stop additional stuff
+    self._on_stop()
+
+    # Stop heartbeat thread
+    if self._heartbeat:
+      self._heartbeat.stop()
+      self._heartbeat = None
+
+    # Change status to IDLE
+    self._store.update_node_status(self.node_id, NodeStatus.IDLE)
+
 
   def get_nodes(self):
     return self._store.get_all_nodes()
   
 
-  def get_node_by_id(self, id: uuid4):
-    return self._store.get_node_by_id(id)
-
+  def get_node(self):
+    return self._store.get_node_by_id(self.node_id) if self.node_id else None
+  
 
   def get_task_by_id(self, id: int):
     return self._store.get_task_by_id(id)
@@ -66,41 +108,81 @@ class LilotaScheduler:
     else:
       self._logger.debug(f"Task not deleted!")
     return success
+  
+
+  @abstractmethod
+  def _on_start(self):
+    pass
+    # Hook for subclasses (runner start, etc.)
+
+
+  @abstractmethod
+  def _on_stop(self):
+    pass
+    # Hook for subclasses (runner stop, etc.)
 
 
 
-class LilotaWorker:
+class LilotaScheduler(LilotaNode):
+
+  LOGGER_NAME = "lilota_scheduler"
+
+  def __init__(self, db_url: str, **kwargs):
+    super().__init__(
+      db_url=db_url,
+      node_type=NodeType.SCHEDULER,
+      logger_name=self.LOGGER_NAME,
+      logging_filename="lilota_scheduler.log",
+      **kwargs,
+    )
+
+
+  def _on_start(self):
+    pass
+
+
+  def _on_stop(self):
+    pass
+
+
+  def schedule(self, name: str, input: Any = None) -> int:
+    # Save the task infos in the store
+    self._logger.debug(f"Create task (name: '{name}', input: {input})...")
+    id = self._store.create_task(name, input)
+    self._logger.debug(f"Task with id {id} created!")
+    
+    # Return the id of the task
+    return id
+
+
+
+class LilotaWorker(LilotaNode):
 
   LOGGER_NAME = "lilota_worker"
-  LOGGING_FORMATTER_DEFAULT = "%(asctime)s [PID %(process)d]: [%(levelname)s] - %(message)s"
 
-  def __init__(self, db_url: str, number_of_processes = cpu_count(), set_progress_manually: bool = False, logging_level = logging.DEBUG, logging_filename = "lilota_scheduler.log"):
-    # Initialize the registry
-    self._registry: Dict[str, RegisteredTask] = {}
+  def __init__(
+    self,
+    db_url: str,
+    number_of_processes=cpu_count(),
+    set_progress_manually=False,
+    **kwargs):
 
-    # Setup logging
-    self._logger = logging.getLogger(self.LOGGER_NAME)
-    self._logger.setLevel(logging_level)
-    file_handler = logging.FileHandler(logging_filename)
-    formatter = logging.Formatter(self.LOGGING_FORMATTER_DEFAULT)
-    file_handler.setFormatter(formatter)
-    self._logger.addHandler(file_handler)
+    super().__init__(
+      db_url=db_url,
+      node_type=NodeType.WORKER,
+      logger_name=self.LOGGER_NAME,
+      logging_filename="lilota_worker.log",
+      **kwargs,
+    )
 
-    # Upgrade the database
-    self._logger.debug("Upgrade database...")
-    upgrade_db(db_url)
-    self._logger.debug("Database upgraded!")
-
-    # Create the store
-    self._logger.debug("Create store...")
-    self._store = SqlAlchemyTaskStore(db_url)
-    self._logger.debug("Store created!")
-
-    # Create a scheduler node in the database
-    self.node_id = self._store.create_node(NodeType.WORKER, NodeStatus.IDLE)
+    self._registry = {}
 
     # Initialize the task runner
-    self._runner = TaskRunner(db_url, number_of_processes=number_of_processes, set_progress_manually=set_progress_manually)
+    self._runner = TaskRunner(
+        db_url,
+        number_of_processes=number_of_processes,
+        set_progress_manually=set_progress_manually,
+    )
 
 
   def _register(
@@ -150,20 +232,14 @@ class LilotaWorker:
     return decorator
   
 
-  def start(self):
-    self._store.update_node_status(self.node_id, NodeStatus.STARTING)
+  def _on_start(self):
+    # Start the task runner
     self._runner.start()
-    self._store.update_node_status(self.node_id, NodeStatus.RUNNING)
 
 
-  def stop(self):
-    self._store.update_node_status(self.node_id, NodeStatus.STOPPING)
+  def _on_stop(self):
+    # Stop the task runner
     self._runner.stop()
-    self._store.update_node_status(self.node_id, NodeStatus.IDLE)
-
-
-  def get_node_by_id(self, id: uuid4):
-    return self._store.get_node_by_id(id)
 
 
 
