@@ -7,9 +7,6 @@ from lilota.stores import SqlAlchemyTaskStore
 import logging
 
 
-_lock = Lock()
-
-
 def _execute(queue: Queue, registrations: dict[str, RegisteredTask], sentinel: str, db_url: str, logging_queue: Queue, logging_level, set_progress_manually: bool):
   logger = logging.getLogger("lilota")
   logger.addHandler(QueueHandler(logging_queue))
@@ -98,9 +95,6 @@ class TaskRunner():
     if self._is_started:
       raise Exception("The task runner is already started")
 
-    # Acquire lock
-    _lock.acquire()
-
     try:
       # Start the logging thread
       self._start_logging()
@@ -118,12 +112,9 @@ class TaskRunner():
     except Exception as ex:
       self._logger.exception(str(ex))
       raise Exception(f"An error occured when starting the processes: {str(ex)}")
-    finally:
-      _lock.release()
 
 
   def add(self, name: str, input: Any = None) -> int:
-    _lock.acquire()
     try:
       # Check that the task runner is started
       if not self._is_started:
@@ -141,21 +132,14 @@ class TaskRunner():
     except Exception as ex:
       self._logger.exception(str(ex))
       raise ex
-    finally:
-      _lock.release()
 
 
   def stop(self):
     # Check if task runner was started
-    _lock.acquire()
-    try:
-      if not self._is_started:
-        raise Exception("The task runner cannot be stopped because it was not started")
-    finally:
-      _lock.release()
+    if not self._is_started:
+      raise Exception("The task runner cannot be stopped because it was not started")
 
     # Send the sentinel to each of the processes
-    _lock.acquire()
     try:
       # Stop all other processes
       self._logger.debug(f"Stop all processes")
@@ -164,11 +148,8 @@ class TaskRunner():
       self._logger.debug(f"All processes stopped")
     except Exception as ex:
       self._logger.exception(str(ex))
-    finally:
-      _lock.release()
 
     # Afterwards we wait until all processes are done
-    _lock.acquire()
     try:
       # Wait for processes
       for p, _ in self._processes:
@@ -188,7 +169,6 @@ class TaskRunner():
       self._logger.exception(str(ex))
     finally:
       self._logger.info("lilota stopped")
-      _lock.release()
 
 
   def _start_logging(self):
