@@ -5,15 +5,18 @@ from dataclasses import dataclass
 from lilota.core import LilotaScheduler, LilotaWorker
 from lilota.models import Node, Task
 import time
+import logging
 
 
 scheduler = LilotaScheduler(
-  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample"
+  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample",
+  logging_level=logging.DEBUG
 )
 
 worker = LilotaWorker(
   db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample", 
-  number_of_processes=1
+  number_of_processes=1,
+  logging_level=logging.DEBUG
 )
 
 
@@ -28,32 +31,39 @@ class AddOutput():
   sum: int
 
 
-# @worker.register("add", input_model=AddInput, output_model=AddOutput)
-# def add(input: AddInput) -> AddOutput:
-#    return AddOutput(input.a + input.b)
+@worker.register("add", input_model=AddInput, output_model=AddOutput)
+def add(input: AddInput) -> AddOutput:
+   return AddOutput(input.a + input.b)
 
 
 def main():
-  input("Enter a key to start the scheduler")
-  scheduler.start()
-  node: Node = scheduler.get_node()
-  print(f"Scheduler ID: {node.id}")
-  input("Enter a key to stop the scheduler")
-  scheduler.stop()
-  input("Enter a key to start the scheduler")
-  scheduler.start()
-  input("Enter a key to stop the scheduler")
-  scheduler.stop()
+  # input("Enter a key to start the scheduler")
+  # scheduler.start()
+  # node: Node = scheduler.get_node()
+  # print(f"Scheduler ID: {node.id}")
+  # input("Enter a key to stop the scheduler")
+  # scheduler.stop()
+  # input("Enter a key to start the scheduler")
+  # scheduler.start()
+  # input("Enter a key to stop the scheduler")
+  # scheduler.stop()
 
-  input("Enter a key to start the worker")
+  # input("Enter a key to start the worker")
+  # worker.start()
+  # node: Node = worker.get_node()
+  # print(f"Worker ID: {node.id}")
+  # input("Enter a key to stop the worker")
+  # worker.stop()
+  # input("Enter a key to start the worker")
+  # worker.start()
+  # input("Enter a key to stop the application")
+  # worker.stop()
+
+  scheduler.start()
+  scheduler.schedule("add", AddInput(2, 3))
+  scheduler.stop()
   worker.start()
-  node: Node = worker.get_node()
-  print(f"Worker ID: {node.id}")
-  input("Enter a key to stop the worker")
-  worker.stop()
-  input("Enter a key to start the worker")
-  worker.start()
-  input("Enter a key to stop the application")
+
   worker.stop()
 
   input("Stopped")

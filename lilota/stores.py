@@ -24,23 +24,23 @@ class TaskStoreBase(ABC):
     pass
 
   @abstractmethod
-  def get_task_by_id(self, id):
+  def get_task_by_id(self, id: uuid4):
     pass
 
   @abstractmethod
-  def start_task(self, id: int):
+  def start_task(self, id: uuid4):
     pass
 
   @abstractmethod
-  def set_progress(self, id: int, progress: int):
+  def set_progress(self, id: uuid4, progress: int):
     pass
 
   @abstractmethod
-  def end_task_success(self, id: int, output: Any):
+  def end_task_success(self, id: uuid4, output: Any):
     pass
 
   @abstractmethod
-  def end_task_failure(self, id: int, ex: Exception):
+  def end_task_failure(self, id: uuid4, ex: Exception):
     pass
 
 
@@ -99,7 +99,7 @@ class SqlAlchemyTaskStore(TaskStoreBase):
     return task.id
   
 
-  def update_node_status(self, id: int, status: NodeStatus):
+  def update_node_status(self, id: uuid4, status: NodeStatus):
     with self._get_session() as session:
       with session.begin():
         stmt = (
@@ -108,7 +108,7 @@ class SqlAlchemyTaskStore(TaskStoreBase):
         session.execute(stmt)
 
 
-  def update_node_last_seen_at(self, id: int):
+  def update_node_last_seen_at(self, id: uuid4):
     with self._get_session() as session:
       with session.begin():
         session.execute(
@@ -135,7 +135,7 @@ class SqlAlchemyTaskStore(TaskStoreBase):
         )
 
 
-  def get_task_by_id(self, id: int):
+  def get_task_by_id(self, id: uuid4):
     with self._get_session() as session:
       with session.begin():
         task = session.get(Task, id)
@@ -144,7 +144,7 @@ class SqlAlchemyTaskStore(TaskStoreBase):
         return task
 
 
-  def start_task(self, id: int) -> Task:
+  def start_task(self, id: uuid4) -> Task:
     with self._get_session() as session:
       with session.begin():
         task = self._load_task(session, id)
@@ -156,14 +156,14 @@ class SqlAlchemyTaskStore(TaskStoreBase):
         return task
 
 
-  def set_progress(self, id: int, progress: int):
+  def set_progress(self, id: uuid4, progress: int):
     with self._get_session() as session:
       with session.begin():
         task = self._load_task(session, id)
         task.progress_percentage = max(0, min(progress, 100))
 
 
-  def end_task_success(self, id: int, output: Any):
+  def end_task_success(self, id: uuid4, output: Any):
     if not output is None:
       output = normalize_data(output)
 
@@ -174,7 +174,7 @@ class SqlAlchemyTaskStore(TaskStoreBase):
         self._complete_progress(task, TaskStatus.COMPLETED)
 
 
-  def end_task_failure(self, id: int, ex: Exception):
+  def end_task_failure(self, id: uuid4, ex: Exception):
     with self._get_session() as session:
       with session.begin():
         task = self._load_task(session, id)
@@ -182,7 +182,7 @@ class SqlAlchemyTaskStore(TaskStoreBase):
         self._complete_progress(task, TaskStatus.FAILED)
 
 
-  def delete_task_by_id(self, id: int):
+  def delete_task_by_id(self, id: uuid4):
     with self._get_session() as session:
       with session.begin():
         task = session.get(Task, id)
@@ -213,8 +213,30 @@ class SqlAlchemyTaskStore(TaskStoreBase):
     return self._Session()
 
 
-  def _load_task(self, session, id: int) -> Task:
+  def _load_task(self, session, id: uuid4) -> Task:
     task: Task = session.get(Task, id)
     if task is None:
       raise ValueError(f"Task {id} not found")
     return task
+
+
+
+class SqlAlchemyLogStore():
+
+  def __init__(self, db_url: str):
+    self._db_url = db_url
+    self._engine = None
+
+
+  def _get_engine(self):
+    if self._engine is None:
+      self._engine = create_engine(self._db_url, pool_pre_ping=True)
+      self._Session = sessionmaker(
+        bind=self._engine,
+        expire_on_commit=False,
+      )
+
+
+  def get_session(self):
+    self._get_engine()
+    return self._Session()

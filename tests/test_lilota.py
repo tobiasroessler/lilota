@@ -33,10 +33,6 @@ class AddOutput():
     return {
       "sum": self.sum
     }
-  
-  # @classmethod
-  # def from_dict(cls, data: dict[str, Any]):
-  #   return cls(**data)
 
 
 @dataclass

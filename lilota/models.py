@@ -1,5 +1,5 @@
 from typing import Any, Callable, Type, TypeVar, Optional, Any, Protocol, runtime_checkable
-from sqlalchemy import String, DateTime, JSON, CheckConstraint
+from sqlalchemy import String, Text, DateTime, JSON, CheckConstraint
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column
 from datetime import datetime, timezone
 from dataclasses import is_dataclass, asdict
@@ -153,7 +153,11 @@ class Node(Base):
 
 class Task(Base):
   __tablename__ = "lilota_task"
-  id: Mapped[int] = mapped_column(primary_key=True)
+  # id: Mapped[int] = mapped_column(primary_key=True)
+  id: Mapped[UUID] = mapped_column(
+    primary_key=True,
+    default=uuid4
+  )
   name: Mapped[str] = mapped_column(String, nullable=False)
   pid: Mapped[int] = mapped_column(default=0, nullable=False)
   status: Mapped[str] = mapped_column(
@@ -181,3 +185,21 @@ class Task(Base):
 
   def __repr__(self):
     return f"<TaskInfo(id={self.id}, name={self.name}, progress={self.progress_percentage}%)>"
+  
+
+
+class LogEntry(Base):
+  __tablename__ = "lilota_log"
+  id: Mapped[int] = mapped_column(primary_key=True)
+  created_at: Mapped[datetime] = mapped_column(
+    DateTime(timezone=True),
+    default=lambda: datetime.now(timezone.utc),
+    nullable=False,
+  )
+  level: Mapped[str] = mapped_column(String(20), nullable=False)
+  logger: Mapped[str] = mapped_column(String(255), nullable=False)
+  message: Mapped[str] = mapped_column(Text, nullable=False)
+  process: Mapped[str | None] = mapped_column(String(64), default=None)
+  thread: Mapped[str | None] = mapped_column(String(64), default=None)
+  node_id: Mapped[UUID | None] = mapped_column(default=None)
+  task_id: Mapped[UUID | None] = mapped_column(default=None)

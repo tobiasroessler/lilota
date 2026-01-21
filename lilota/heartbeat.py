@@ -19,9 +19,7 @@ class HeartbeatThread(threading.Thread):
     self.update_fn = update_fn
     self.interval_seconds = interval_seconds
     self._stop_event = threading.Event()
-
-    # Child logger
-    self._logger = logger.getChild(f"{name}-{node_id}")
+    self._logger = logger
 
 
   def run(self) -> None:
