@@ -73,7 +73,7 @@ class LilotaWorkerTestCase(TestCase):
     # Assert
     try:
       node: Node = lilota.get_node()
-      self.assertEqual(node.id, lilota.node_id)
+      self.assertEqual(node.id, lilota._node_id)
       self.assertEqual(node.type, NodeType.WORKER)
       self.assertEqual(node.status, NodeStatus.RUNNING)
       self.assertIsNotNone(node.created_at)
