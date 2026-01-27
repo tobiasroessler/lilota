@@ -7,7 +7,7 @@ import logging
 from uuid import uuid4
 
 
-LOGGER_NAME = "task_runner"
+LOGGER_NAME = "lilota.runner"
 
 
 def _execute(queue: Queue, registrations: dict[str, RegisteredTask], sentinel: str, node_id: uuid4, db_url: str, logging_queue: Queue, logging_level, set_progress_manually: bool):
@@ -16,7 +16,7 @@ def _execute(queue: Queue, registrations: dict[str, RegisteredTask], sentinel: s
   logger = logging.getLogger(LOGGER_NAME)
 
   # Create store
-  store = SqlAlchemyTaskStore(db_url=db_url, set_progress_manually=set_progress_manually)
+  store = SqlAlchemyTaskStore(db_url=db_url, logger=logger, set_progress_manually=set_progress_manually)
   
   # We get the tasks from the queue. If the sentinel is send we stop.
   try:
@@ -56,23 +56,20 @@ def _execute_task(registered_task: RegisteredTask, task: Task, store: SqlAlchemy
 class TaskRunner():
 
   SENTINEL = "STOP"
-  LOGGER_NAME = "lilota"
-  LOGGING_FORMATTER_DEFAULT = "%(asctime)s [PID %(process)d]: [%(levelname)s] - %(message)s"
   
-
-  def __init__(self, db_url: str, logging_queue: Queue, logging_level, number_of_processes: int = cpu_count(), set_progress_manually: bool = False):
+  def __init__(self, db_url: str, logging_queue: Queue, logging_level, logger: logging.Logger, number_of_processes: int = cpu_count(), set_progress_manually: bool = False):
     if not isinstance(number_of_processes, int):
       raise TypeError("'number_of_processes' is not of type int")
     
     self._db_url = db_url
     self._number_of_processes = min(number_of_processes, cpu_count())
     self._set_progress_manually = set_progress_manually
-    self._store = SqlAlchemyTaskStore(db_url)
     self._registrations: dict[str, RegisteredTask] = {}
     self._input_queue = None
     self._logging_queue = logging_queue
     self._logging_level = logging_level
-    self._logger = logging.getLogger(LOGGER_NAME)
+    self._logger = logger
+    self._store = SqlAlchemyTaskStore(db_url, logger)
     self._processes: list[Process] = []
     self._is_started = False
 

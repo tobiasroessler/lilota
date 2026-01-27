@@ -2,11 +2,11 @@ from abc import ABC, abstractmethod
 from typing import Callable, Type, Optional, Dict, Any
 from multiprocessing import cpu_count, Queue
 from lilota.models import NodeType, NodeStatus, TaskProgress, RegisteredTask
-from lilota.stores import SqlAlchemyTaskStore
+from lilota.stores import SqlAlchemyNodeStore, SqlAlchemyNodeLeaderStore, SqlAlchemyTaskStore
 from lilota.runner import TaskRunner
-from lilota.heartbeat import HeartbeatThread
+from lilota.heartbeat import HeartbeatThreadBase, SchedulerHeartbeatThread, WorkerHeartbeatThread
 from lilota.db.alembic import upgrade_db
-from lilota.logging import configure_logging_listener, configure_logging, configure_logging_with_dbhandler, create_context_logger
+from lilota.logging import configure_logging, create_context_logger, LoggingRuntime
 import logging
 from uuid import uuid4
 
@@ -26,95 +26,75 @@ class LilotaNode(ABC):
     self._node_type = node_type
     self._heartbeat_interval_sec = heartbeat_interval_sec
     self._node_id = None
-    self._store = None
-    self._heartbeat = None
-    self._logging_queue = Queue()
+    self._node_store = None
+    self._task_store = None
+    self._heartbeat: HeartbeatThreadBase = None
     self._logger_name = logger_name
     self._logging_level = logging_level
-    self._logger: logging.Logger = None
+
+    # Upgrade the database
+    upgrade_db(self._db_url)
+
+    # Setup logging
+    self._logging_runtime = LoggingRuntime(db_url, logging_level)
+    self._runtime = self._logging_runtime.get()
+    self._logger = configure_logging(self._runtime.queue, logging_level)
 
 
   def start(self):
-    # Start logging
-    self._on_start_logging()
-
     if not self._node_id:
-      # Upgrade the database
-      try:
-        upgrade_db(self._db_url)
-      except Exception as ex:
-        self._logger.exception(ex)
-        raise ex
-
-      # Create the store
-      self._store = SqlAlchemyTaskStore(self._db_url)
+      # Create stores
+      self._node_store = SqlAlchemyNodeStore(self._db_url, self._logger)
+      self._task_store = SqlAlchemyTaskStore(self._db_url, self._logger)
 
       # Create node with status STARTING
-      self._node_id = self._store.create_node(self._node_type, NodeStatus.STARTING)
+      self._node_id = self._node_store.create_node(self._node_type, NodeStatus.STARTING)
 
       # Create a context logger
       self._logger = create_context_logger(self._logger, node_id=self._node_id)
     else:
       # Change status to STARTING
-      self._store.update_node_status(self._node_id, NodeStatus.STARTING)
+      self._node_store.update_node_status(self._node_id, NodeStatus.STARTING)
 
     # Start additional stuff
     self._on_start()
 
     # Change status to RUNNING
-    self._store.update_node_status(self._node_id, NodeStatus.RUNNING)
+    self._node_store.update_node_status(self._node_id, NodeStatus.RUNNING)
 
-    # Start heartbeat thread
-    self._heartbeat = HeartbeatThread(
-      node_id=self._node_id,
-      update_fn=self._store.update_node_last_seen_at,
-      logger=self._logger,
-      interval_seconds=self._heartbeat_interval_sec,
-    )
-    self._heartbeat.start()
-
-    # Log Node started message
-    self._logger.info("Node started")
+    # On started
+    self._on_started()
 
 
   def stop(self):
     # Change status to STOPPING
-    self._store.update_node_status(self._node_id, NodeStatus.STOPPING)
+    self._node_store.update_node_status(self._node_id, NodeStatus.STOPPING)
 
     # Stop additional stuff
     self._on_stop()
 
-    # Stop heartbeat thread
-    if self._heartbeat:
-      self._heartbeat.stop()
-      self._heartbeat.join(timeout=5)
-      self._heartbeat = None
-
     # Change status to IDLE
-    self._store.update_node_status(self._node_id, NodeStatus.IDLE)
+    self._node_store.update_node_status(self._node_id, NodeStatus.IDLE)
 
     # Log Node stopped message
     self._logger.info("Node stopped")
 
-    # Stop logging
-    self._on_stop_logging()
-
 
   def get_nodes(self):
-    return self._store.get_all_nodes()
+    return self._node_store.get_all_nodes()
   
 
   def get_node(self):
-    return self._store.get_node_by_id(self._node_id) if self._node_id else None
+    return self._node_store.get_node_by_id(self._node_id) if self._node_id else None
   
 
   def get_task_by_id(self, id: uuid4):
-    return self._store.get_task_by_id(id)
+    return self._task_store.get_task_by_id(id)
   
 
   def delete_task_by_id(self, id: uuid4):
     self._logger.debug(f"Delete task with id {id}")
-    success = self._store.delete_task_by_id(id)
+    success = self._task_store.delete_task_by_id(id)
     if success:
       self._logger.debug(f"Task deleted!")
     else:
@@ -122,32 +102,33 @@ class LilotaNode(ABC):
     return success
   
 
-  @abstractmethod
-  def _on_start_logging(self):
-    pass
-
-
-  @abstractmethod
-  def _on_stop_logging(self):
-    pass
+  def _stop_heartbeat(self):
+    # Stop heartbeat thread
+    if self._heartbeat:
+      self._heartbeat.stop()
+      self._heartbeat.join(timeout=5)
+      self._heartbeat = None
 
 
   @abstractmethod
   def _on_start(self):
     pass
-    # Hook for subclasses (runner start, etc.)
+
+
+  @abstractmethod
+  def _on_started(self):
+    pass
 
 
   @abstractmethod
   def _on_stop(self):
     pass
-    # Hook for subclasses (runner stop, etc.)
 
 
 
 class LilotaScheduler(LilotaNode):
 
-  LOGGER_NAME = "lilota_scheduler"
+  LOGGER_NAME = "lilota.scheduler"
 
   def __init__(self, db_url: str, logging_level=logging.INFO, **kwargs):
     super().__init__(
@@ -158,35 +139,44 @@ class LilotaScheduler(LilotaNode):
       **kwargs,
     )
 
-
-  def _on_start_logging(self):
-    if not self._node_id:
-      configure_logging_with_dbhandler(self._db_url, self._logging_level)
-      self._logger = logging.getLogger(self._logger_name)
-
-
-  def _on_stop_logging(self):
-    pass
+    # Configure logging for main process
+    # configure_logging(self._runtime.queue, self._logging_level)
+    # self._logger = logging.getLogger(self._logger_name)
 
 
   def _on_start(self):
     pass
 
 
+  def _on_started(self):
+    # Start heartbeat thread
+    self._heartbeat = SchedulerHeartbeatThread(
+      node_id=self._node_id,
+      logger=self._logger,
+      interval_seconds=self._heartbeat_interval_sec,
+      node_store=self._node_store
+    )
+    self._heartbeat.start()
+
+    # Log Node started message
+    self._logger.info("Scheduler started")
+
+
   def _on_stop(self):
-    pass
+    # Stop heartbeat thread
+    self._stop_heartbeat()
 
 
   def schedule(self, name: str, input: Any = None) -> int:
     # Save the task infos in the store
-    self._logger.debug(f"Create task (name: '{name}', input: {input})")
-    return self._store.create_task(name, input)
+    self._logger.info(f"Create task (name: '{name}', input: {input})")
+    return self._task_store.create_task(name, input)
 
 
 
 class LilotaWorker(LilotaNode):
 
-  LOGGER_NAME = "lilota_worker"
+  LOGGER_NAME = "lilota.worker"
 
   def __init__(
     self,
@@ -208,11 +198,16 @@ class LilotaWorker(LilotaNode):
     self._set_progress_manually = set_progress_manually
     self._registry = {}
 
-    # Initialize the task runner
+    # Configure logging for main process
+    #configure_logging(self._runtime.queue, self._logging_level)
+    #self._logger = logging.getLogger(self._logger_name)
+
+    # Initialize the task runner (must be done here otherwise register will not work!!!)
     self._runner = TaskRunner(
       self._db_url,
-      self._logging_queue,
+      self._runtime.queue,
       self._logging_level,
+      self._logger,
       number_of_processes=self._number_of_processes,
       set_progress_manually=self._set_progress_manually,
     )
@@ -263,21 +258,6 @@ class LilotaWorker(LilotaNode):
       )
       return func
     return decorator
-  
-
-  def _on_start_logging(self):
-    # Start centralized logging
-    self._logging_listener = configure_logging_listener(self._db_url, self._logging_queue, self._logging_level)
-
-    # Configure logging for main process
-    configure_logging(self._logging_queue, self._logging_level)
-    self._logger = logging.getLogger(self._logger_name)
-
-
-  def _on_stop_logging(self):
-    # Stop centralized logging
-    if self._logging_listener:
-      self._logging_listener.stop()
 
 
   def _on_start(self):
@@ -285,9 +265,30 @@ class LilotaWorker(LilotaNode):
     self._runner.start(self._node_id)
 
 
+  def _on_started(self):
+    # Create node leader store
+    node_leader_store = SqlAlchemyNodeLeaderStore(self._db_url, self._logger)
+
+    # Start heartbeat thread
+    self._heartbeat = WorkerHeartbeatThread(
+      node_id=self._node_id,
+      logger=self._logger,
+      interval_seconds=self._heartbeat_interval_sec,
+      node_store=self._node_store,
+      node_leader_store=node_leader_store
+    )
+    self._heartbeat.start()
+
+    # Log Node started message
+    self._logger.info("Worker started")
+
+
   def _on_stop(self):
     # Stop the task runner
     self._runner.stop()
+
+    # Stop heartbeat thread
+    self._stop_heartbeat()
 
 
 

@@ -1,5 +1,5 @@
 from typing import Any, Callable, Type, TypeVar, Optional, Any, Protocol, runtime_checkable
-from sqlalchemy import String, Text, DateTime, JSON, CheckConstraint
+from sqlalchemy import Integer, String, Text, DateTime, JSON, CheckConstraint
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column
 from datetime import datetime, timezone
 from dataclasses import is_dataclass, asdict
@@ -26,6 +26,7 @@ class NodeStatus(StrEnum):
   STOPPING = "stopping"
   STOPPED = "stopped"
   CRASHED = "crashed"
+  DEAD ="dead"
 
 
 
@@ -203,3 +204,11 @@ class LogEntry(Base):
   thread: Mapped[str | None] = mapped_column(String(64), default=None)
   node_id: Mapped[UUID | None] = mapped_column(default=None)
   task_id: Mapped[UUID | None] = mapped_column(default=None)
+
+
+
+class NodeLeader(Base):
+  __tablename__ = "lilota_node_leader"
+  id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+  node_id: Mapped[UUID] = mapped_column(nullable=False)
+  lease_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

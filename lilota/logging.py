@@ -3,11 +3,12 @@ from logging.handlers import QueueListener, QueueHandler
 from multiprocessing import Queue
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from typing import Literal
+from typing import Literal, Optional
 from .models import LogEntry
 from .stores import SqlAlchemyLogStore
 
 
+LILOTA_LOGGER_NAME = "lilota"
 LOGGING_FORMATTER_DEFAULT = "%(asctime)s [PID %(process)d]: [%(levelname)s] - %(message)s"
 
 
@@ -50,34 +51,57 @@ class LilotaLoggingFilter(logging.Filter):
     if record.name.startswith("alembic."):
       return record.levelno >= logging.WARNING
     return True
-    
+  
 
 
-def configure_logging_listener(db_url: str, logging_queue: Queue, logging_level: Literal[30]) -> QueueListener:
-  db_handler = SqlAlchemyHandler(SqlAlchemyLogStore(db_url))
-  db_handler.setLevel(logging_level)
-  db_handler.setFormatter(logging.Formatter("%(message)s"))
-  db_handler.addFilter(LilotaLoggingFilter())
-  listener = QueueListener(logging_queue, db_handler)
-  listener.start()
-  return listener
+class LoggingRuntime:
+
+  _instance: Optional["LoggingRuntime"] = None
+
+  def __init__(self, db_url: str, logging_level: int):
+    if LoggingRuntime._instance is not None:
+      return
+
+    self.queue = Queue()
+    db_handler = SqlAlchemyHandler(SqlAlchemyLogStore(db_url))
+    db_handler.setLevel(logging_level)
+    db_handler.setFormatter(logging.Formatter("%(message)s"))
+    db_handler.addFilter(LilotaLoggingFilter())
+
+    # TODO: With this logger nothing is logged. Why?
+    # logger = logging.getLogger(LILOTA_LOGGER_NAME)
+    # logger.setLevel(logging_level)
+    # logger.addHandler(QueueHandler(self.queue))
+    # logger.propagate = False
+
+    self.listener = QueueListener(self.queue, db_handler)
+    self.listener.start()
+
+    LoggingRuntime._instance = self
+
+
+  @classmethod
+  def get(cls) -> "LoggingRuntime":
+    if cls._instance is None:
+      raise RuntimeError("LoggingRuntime not initialized")
+    return cls._instance
+
+
+  def stop(self):
+    if self.listener:
+      self.listener.stop()
+      self.listener = None
+
 
 
 def configure_logging(logging_queue: Queue, logging_level: int) -> None:
-  root = logging.getLogger()
-  root.setLevel(logging_level)
-  root.handlers.clear()
-  root.addHandler(QueueHandler(logging_queue))
-
-
-def configure_logging_with_dbhandler(db_url: str, logging_level: int) -> None:
-  logger = logging.getLogger()
+  logger = logging.getLogger(LILOTA_LOGGER_NAME)
   logger.setLevel(logging_level)
-  db_handler = SqlAlchemyHandler(SqlAlchemyLogStore(db_url))
-  db_handler.setLevel(logging_level)
-  db_handler.setFormatter(logging.Formatter("%(message)s"))
-  db_handler.addFilter(LilotaLoggingFilter())
-  logger.addHandler(db_handler)
+
+  if not any(isinstance(h, QueueHandler) for h in logger.handlers):
+    logger.addHandler(QueueHandler(logging_queue))
+
+  logger.propagate = False
   return logger
 
 
