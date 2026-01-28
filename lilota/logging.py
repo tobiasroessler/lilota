@@ -1,5 +1,6 @@
 import logging
 from logging.handlers import QueueListener, QueueHandler
+from datetime import datetime
 from multiprocessing import Queue
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -22,6 +23,7 @@ class SqlAlchemyHandler(logging.Handler):
   def emit(self, record: logging.LogRecord) -> None:
     with self.log_store.get_session() as session:
       entry = LogEntry(
+        created_at=datetime.fromtimestamp(record.created),
         level=record.levelname,
         logger=record.name,
         message=self.format(record),

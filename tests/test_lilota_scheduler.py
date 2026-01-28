@@ -9,8 +9,9 @@ from multiprocessing import cpu_count
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from lilota.core import LilotaScheduler
-from lilota.models import Node, NodeType, NodeStatus, Task, TaskStatus, TaskProgress
+from lilota.models import Node, NodeType, NodeStatus, Task, TaskStatus, TaskProgress, LogEntry
 from lilota.db.alembic import get_alembic_config
+from lilota.stores import SqlAlchemyLogStore
 import time
 
 
@@ -66,8 +67,10 @@ class LilotaSchedulerTestCase(TestCase):
 
 
   def test_start___should_create_node(self):
-    # Act
+    # Arrange
     lilota = LilotaScheduler(LilotaSchedulerTestCase.DB_URL)
+
+    # Act
     lilota.start()
 
     # Assert
@@ -152,6 +155,54 @@ class LilotaSchedulerTestCase(TestCase):
       self.assertIsNone(task.locked_by)
     finally:
       lilota.stop()
+
+
+  def test_logging___when_starting_scheduler___should_log_correctly(self):
+    # Arrange
+    lilota = LilotaScheduler(LilotaSchedulerTestCase.DB_URL)
+    log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaSchedulerTestCase.DB_URL)
+
+    # Act
+    lilota.start()
+
+    # Assert
+    try:
+      node: Node = lilota.get_node()
+    finally:
+      lilota.stop()
+
+    log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(node.id)
+    self.assertEqual(log_entries[0].message, "Scheduler started")
+    self.assertEqual(log_entries[1].message, "Node stopped")
+
+
+  def test_logging___when_starting_scheduler_twice___should_log_correctly(self):
+    # Arrange
+    lilota1 = LilotaScheduler(LilotaSchedulerTestCase.DB_URL)
+    lilota2 = LilotaScheduler(LilotaSchedulerTestCase.DB_URL)
+    log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaSchedulerTestCase.DB_URL)
+
+    # Act
+    lilota1.start()
+    lilota2.start()
+
+    # Assert
+    try:
+      node1: Node = lilota1.get_node()
+      node2: Node = lilota2.get_node()
+    finally:
+      lilota1.stop()
+      lilota2.stop()
+
+    log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(node1.id)
+    self.assertEqual(len(log_entries), 2)
+    self.assertEqual(log_entries[0].message, "Scheduler started")
+    self.assertEqual(log_entries[1].message, "Node stopped")
+
+    log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(node2.id)
+    self.assertEqual(len(log_entries), 2)
+    self.assertEqual(log_entries[0].message, "Scheduler started")
+    self.assertEqual(log_entries[1].message, "Node stopped")
 
 
 if __name__ == '__main__':
