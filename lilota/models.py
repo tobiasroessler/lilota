@@ -146,7 +146,7 @@ class Node(Base):
         name="lilota_note_type_check"
     ),
     CheckConstraint(
-        "status IN ('idle', 'starting', 'running', 'stopping', 'stopped', 'crashed')",
+        "status IN ('idle', 'starting', 'running', 'stopping', 'stopped', 'crashed', 'dead')",
         name="lilota_note_status_check"
     )
   )

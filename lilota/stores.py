@@ -245,15 +245,14 @@ class SqlAlchemyLogStore():
 
 class SqlAlchemyNodeLeaderStore(StoreBase):
 
-  LEASE_SECONDS = 30
-
-  def __init__(self, db_url: str, logger: logging.Logger):
+  def __init__(self, db_url: str, logger: logging.Logger, node_timeout_sec: int):
     super().__init__(db_url, logger)
+    self._node_timeout_sec: int = node_timeout_sec
   
 
   def try_acquire_leadership(self, node_id) -> bool:
     now = datetime.now(timezone.utc)
-    new_expiry = now + timedelta(seconds=self.LEASE_SECONDS)
+    new_expiry = now + timedelta(seconds=self._node_timeout_sec)
     session = self._get_session()
 
     try:
@@ -272,7 +271,7 @@ class SqlAlchemyNodeLeaderStore(StoreBase):
 
       if result.rowcount == 1:
         session.commit()
-        self._logger.info("Leadership acquired (lease takeover)")
+        self._logger.info("Leadership acquired (takeover)")
         return True
 
       # Check if row exists
@@ -309,7 +308,7 @@ class SqlAlchemyNodeLeaderStore(StoreBase):
   
   def renew_leadership(self, node_id):
     now = datetime.now(timezone.utc)
-    new_expiry = now + timedelta(seconds=self.LEASE_SECONDS)
+    new_expiry = now + timedelta(seconds=self._node_timeout_sec)
 
     with self._get_session() as session:
       result = session.execute(
@@ -323,3 +322,13 @@ class SqlAlchemyNodeLeaderStore(StoreBase):
 
       session.commit()
       return result.rowcount == 1
+    
+
+  def delete_leader_by_id(self, id: int):
+    with self._get_session() as session:
+      with session.begin():
+        leader = session.get(Task, id)
+        if leader is None:
+          return False
+        session.delete(leader)
+    return True

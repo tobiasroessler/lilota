@@ -31,9 +31,9 @@ class AddOutput():
   sum: int
 
 
-@worker.register("add", input_model=AddInput, output_model=AddOutput)
-def add(input: AddInput) -> AddOutput:
-   return AddOutput(input.a + input.b)
+# @worker.register("add", input_model=AddInput, output_model=AddOutput)
+# def add(input: AddInput) -> AddOutput:
+#    return AddOutput(input.a + input.b)
 
 
 def main():

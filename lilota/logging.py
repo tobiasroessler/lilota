@@ -96,7 +96,7 @@ class LoggingRuntime:
 
 
 
-def configure_logging(logging_queue: Queue, logging_level: int) -> None:
+def configure_logging(logging_queue: Queue, logging_level: int) -> logging.Logger:
   logger = logging.getLogger(LILOTA_LOGGER_NAME)
   logger.setLevel(logging_level)
 

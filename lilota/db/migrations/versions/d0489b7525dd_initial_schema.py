@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: 6f1a5b66d9d1
+Revision ID: d0489b7525dd
 Revises: 
-Create Date: 2026-01-28 22:22:47.613573
+Create Date: 2026-02-01 16:07:06.932030
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '6f1a5b66d9d1'
+revision: str = 'd0489b7525dd'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -40,7 +40,7 @@ def upgrade() -> None:
     sa.Column('status', sa.String(length=32), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.Column('last_seen_at', sa.DateTime(), nullable=False),
-    sa.CheckConstraint("status IN ('idle', 'starting', 'running', 'stopping', 'stopped', 'crashed')", name='lilota_note_status_check'),
+    sa.CheckConstraint("status IN ('idle', 'starting', 'running', 'stopping', 'stopped', 'crashed', 'dead')", name='lilota_note_status_check'),
     sa.CheckConstraint("type IN ('scheduler', 'worker')", name='lilota_note_type_check'),
     sa.PrimaryKeyConstraint('id')
     )

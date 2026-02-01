@@ -18,13 +18,15 @@ class LilotaNode(ABC):
     *,
     db_url: str,
     node_type: NodeType,
-    heartbeat_interval_sec: int = 10,
+    heartbeat_interval_sec: int,
+    node_timeout_sec: int,
     logger_name: str,
     logging_level):
 
     self._db_url = db_url
     self._node_type = node_type
     self._heartbeat_interval_sec = heartbeat_interval_sec
+    self._node_timeout_sec = node_timeout_sec
     self._node_id = None
     self._node_store = None
     self._task_store = None
@@ -130,10 +132,12 @@ class LilotaScheduler(LilotaNode):
 
   LOGGER_NAME = "lilota.scheduler"
 
-  def __init__(self, db_url: str, logging_level=logging.INFO, **kwargs):
+  def __init__(self, db_url: str, heartbeat_interval_sec: int = 5, node_timeout_sec: int = 20, logging_level=logging.INFO, **kwargs):
     super().__init__(
       db_url=db_url,
       node_type=NodeType.SCHEDULER,
+      heartbeat_interval_sec=heartbeat_interval_sec,
+      node_timeout_sec=node_timeout_sec,
       logger_name=self.LOGGER_NAME,
       logging_level=logging_level,
       **kwargs,
@@ -181,6 +185,8 @@ class LilotaWorker(LilotaNode):
   def __init__(
     self,
     db_url: str,
+    heartbeat_interval_sec: int = 5,
+    node_timeout_sec: int = 20,
     number_of_processes=cpu_count(),
     set_progress_manually=False,
     logging_level=logging.INFO,
@@ -189,6 +195,8 @@ class LilotaWorker(LilotaNode):
     super().__init__(
       db_url=db_url,
       node_type=NodeType.WORKER,
+      heartbeat_interval_sec=heartbeat_interval_sec,
+      node_timeout_sec=node_timeout_sec,
       logger_name=self.LOGGER_NAME,
       logging_level=logging_level,
       **kwargs,
@@ -267,13 +275,14 @@ class LilotaWorker(LilotaNode):
 
   def _on_started(self):
     # Create node leader store
-    node_leader_store = SqlAlchemyNodeLeaderStore(self._db_url, self._logger)
+    node_leader_store = SqlAlchemyNodeLeaderStore(self._db_url, self._logger, self._node_timeout_sec)
 
     # Start heartbeat thread
     self._heartbeat = WorkerHeartbeatThread(
       node_id=self._node_id,
       logger=self._logger,
       interval_seconds=self._heartbeat_interval_sec,
+      node_timeout_sec=self._node_timeout_sec,
       node_store=self._node_store,
       node_leader_store=node_leader_store
     )

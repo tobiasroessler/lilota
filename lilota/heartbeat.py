@@ -12,12 +12,14 @@ class HeartbeatThreadBase(threading.Thread, ABC):
     node_id: str,
     logger: logging.Logger,
     interval_seconds: int,
+    node_timeout_sec: int,
     node_store: SqlAlchemyNodeStore,
     name: str
   ):
     super().__init__(name=name, daemon=True)
     self._node_id = node_id
     self._interval_seconds = interval_seconds
+    self._node_timeout_sec = node_timeout_sec
     self._stop_event = threading.Event()
     self._logger = logger
     self._node_store: SqlAlchemyNodeStore = node_store
@@ -58,12 +60,14 @@ class SchedulerHeartbeatThread(HeartbeatThreadBase):
     node_id: str,
     logger: logging.Logger,
     interval_seconds: int,
+    node_timeout_sec: int,
     node_store: SqlAlchemyNodeStore
   ):
     super().__init__(
       node_id,
       logger, 
-      interval_seconds, 
+      interval_seconds,
+      node_timeout_sec,
       node_store,
       f"scheduler_heartbeat_{node_id}"
     )
@@ -81,13 +85,15 @@ class WorkerHeartbeatThread(HeartbeatThreadBase):
     node_id: str,
     logger: logging.Logger,
     interval_seconds: int,
+    node_timeout_sec: int,
     node_store: SqlAlchemyNodeStore,
     node_leader_store: SqlAlchemyNodeLeaderStore
   ):
     super().__init__(
       node_id, 
       logger, 
-      interval_seconds, 
+      interval_seconds,
+      node_timeout_sec,
       node_store, 
       f"worker_heartbeat_{node_id}"
     )
@@ -102,29 +108,24 @@ class WorkerHeartbeatThread(HeartbeatThreadBase):
       self.is_leader = self._node_leader_store.renew_leadership(self._node_id)
 
       if not self._is_leader:
-        self._logger.warning("Leadership lost")
+        self._logger.warning(f"Leadership lost")
 
     # Try to acquire leadership if not leader
     if not self._is_leader:
       self._is_leader = self._node_leader_store.try_acquire_leadership(self._node_id)
 
-      if self._is_leader:
-        self._logger.info("Leadership acquired")
-
     # Leader-only work
-    if self.is_leader:
+    if self._is_leader:
       self._cleanup()
 
   
   def _cleanup(self) -> None:
-    cutoff = datetime.now(timezone.utc) - timedelta(seconds=self.node_timeout)
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=self._node_timeout_sec)
 
     try:
       cleaned = self._node_store.update_nodes_status_on_dead_nodes(cutoff, self._node_id)
       if cleaned > 0:
         self._logger.info(f"Marked {cleaned} stale node(s) as DEAD")
-      else:
-        self._logger.debug("No stale nodes to clean")
     except Exception:
       # Never let cleanup kill the heartbeat thread
       self._logger.exception("Node cleanup failed")
