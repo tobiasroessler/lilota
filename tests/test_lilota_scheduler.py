@@ -11,6 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from lilota.core import LilotaScheduler
 from lilota.models import Node, NodeType, NodeStatus, Task, TaskStatus, TaskProgress, LogEntry
 from lilota.db.alembic import get_alembic_config
+from lilota.logging import LoggingRuntime
 from lilota.stores import SqlAlchemyLogStore
 import time
 
@@ -174,6 +175,30 @@ class LilotaSchedulerTestCase(TestCase):
     log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(node.id)
     self.assertEqual(log_entries[0].message, "Scheduler started")
     self.assertEqual(log_entries[1].message, "Node stopped")
+
+
+  def test_logging___when_starting_scheduler_stopping_and_starting_it_again___should_log_correctly(self):
+    # Arrange
+    lilota = LilotaScheduler(LilotaSchedulerTestCase.DB_URL)
+    log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaSchedulerTestCase.DB_URL)
+    lilota.start()
+    lilota.stop()
+
+    # Act
+    lilota.start()
+
+    # Assert
+    try:
+      node: Node = lilota.get_node()
+    finally:
+      lilota.stop()
+
+    log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(node.id)
+    self.assertEqual(len(log_entries), 4)
+    self.assertEqual(log_entries[0].message, "Scheduler started")
+    self.assertEqual(log_entries[1].message, "Node stopped")
+    self.assertEqual(log_entries[2].message, "Scheduler started")
+    self.assertEqual(log_entries[3].message, "Node stopped")
 
 
   def test_logging___when_starting_scheduler_twice___should_log_correctly(self):

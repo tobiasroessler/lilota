@@ -220,6 +220,7 @@ class LilotaWorkerTestCase(TestCase):
     log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(node_id)
     self.assertTrue(any(entry.message == "Leadership acquired (first leader)" and entry.node_id == node_id for entry in log_entries))
     self.assertFalse(any(entry.message == "Leadership acquired (lease takeover)" and entry.node_id == node_id for entry in log_entries))
+    worker.stop()
 
 
   def test_leadership___with_two_workers_and_first_one_expires___should_set_second_worker_as_leader(self):
@@ -273,6 +274,8 @@ class LilotaWorkerTestCase(TestCase):
     self.assertFalse(any(entry.message == "Leadership acquired (first leader)" for entry in log_entries))
     self.assertTrue(any(entry.message == "Leadership acquired (takeover)" for entry in log_entries))
     self.assertTrue(any(entry.message == "Marked 1 stale node(s) as DEAD" for entry in log_entries))
+    worker1.stop()
+    worker2.stop()
 
 
   def test_leadership___with_two_workers_and_first_one_is_leader___should_not_change_leader(self):
@@ -296,7 +299,7 @@ class LilotaWorkerTestCase(TestCase):
 
     with LilotaWorkerTestCase.get_session() as session:
       node_leader = session.get(NodeLeader, 1)
-      self.assertEqual(node_leader.id, worker1.get_node().id)
+      self.assertEqual(node_leader.node_id, worker1.get_node().id)
       first_expiration_date = node_leader.lease_expires_at
 
     # Act
@@ -305,9 +308,11 @@ class LilotaWorkerTestCase(TestCase):
     # Assert
     with LilotaWorkerTestCase.get_session() as session:
       node_leader = session.get(NodeLeader, 1)
-      self.assertEqual(node_leader.id, worker1.get_node().id)
+      self.assertEqual(node_leader.node_id, worker1.get_node().id)
       next_expiration_date = node_leader.lease_expires_at
       self.assertGreater(next_expiration_date, first_expiration_date)
+    worker1.stop()
+    worker2.stop()
 
 
 if __name__ == '__main__':

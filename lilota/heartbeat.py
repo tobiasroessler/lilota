@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone, timedelta
 import threading
 import logging
+import time
 from .stores import SqlAlchemyNodeStore, SqlAlchemyNodeLeaderStore
 
 
@@ -129,3 +130,29 @@ class WorkerHeartbeatThread(HeartbeatThreadBase):
     except Exception:
       # Never let cleanup kill the heartbeat thread
       self._logger.exception("Node cleanup failed")
+
+
+
+class TaskHeartbeatThread(threading.Thread):
+
+  def __init__(self, name: str, max_sleep_in_sec: float = 5.0):
+    super().__init__(name=name, daemon=True)
+    self._stop_event = threading.Event()
+    self._sleep = 0.1
+    self._max_sleep_in_sec = max_sleep_in_sec
+
+
+  def run(self) -> None:
+    while not self._stop_event.is_set():
+      print("Fetch task")
+      task = None
+      if task:
+        self._sleep = 0.1
+        print("Execute task")
+      else:
+        time.sleep(self._sleep)
+        self._sleep = min(self._sleep * 2, self._max_sleep_in_sec)
+
+
+  def stop(self) -> None:
+    self._stop_event.set()

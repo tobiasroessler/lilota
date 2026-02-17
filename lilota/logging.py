@@ -53,51 +53,55 @@ class LilotaLoggingFilter(logging.Filter):
     if record.name.startswith("alembic."):
       return record.levelno >= logging.WARNING
     return True
-  
+
 
 
 class LoggingRuntime:
-
   _instance: Optional["LoggingRuntime"] = None
-
-  def __init__(self, db_url: str, logging_level: int):
-    if LoggingRuntime._instance is not None:
-      return
-
-    self.queue = Queue()
-    db_handler = SqlAlchemyHandler(SqlAlchemyLogStore(db_url))
-    db_handler.setLevel(logging_level)
-    db_handler.setFormatter(logging.Formatter("%(message)s"))
-    db_handler.addFilter(LilotaLoggingFilter())
-
-    # TODO: With this logger nothing is logged. Why?
-    # logger = logging.getLogger(LILOTA_LOGGER_NAME)
-    # logger.setLevel(logging_level)
-    # logger.addHandler(QueueHandler(self.queue))
-    # logger.propagate = False
-
-    self.listener = QueueListener(self.queue, db_handler)
-    self.listener.start()
-
-    LoggingRuntime._instance = self
+  _refcount: int = 0
 
 
-  @classmethod
-  def get(cls) -> "LoggingRuntime":
+  def __new__(cls, db_url: str, logging_level: int):
     if cls._instance is None:
-      raise RuntimeError("LoggingRuntime not initialized")
+      cls._instance = super().__new__(cls)
+      cls._instance._initialized = False
     return cls._instance
 
 
+  def __init__(self, db_url: str, logging_level: int):
+    if self._initialized:
+      return
+
+    self.queue = Queue()
+    self.db_handler = SqlAlchemyHandler(SqlAlchemyLogStore(db_url))
+    self.db_handler.setLevel(logging_level)
+    self.db_handler.setFormatter(logging.Formatter("%(message)s"))
+    self.db_handler.addFilter(LilotaLoggingFilter())
+    self.listener: Optional[QueueListener] = None
+
+    self._initialized = True
+
+
+  def start(self):
+    if self.listener is None:
+      self.listener = QueueListener(self.queue, self.db_handler)
+      self.listener.start()
+
+    LoggingRuntime._refcount += 1
+
+
   def stop(self):
-    if self.listener:
+    if LoggingRuntime._refcount > 0:
+      LoggingRuntime._refcount -= 1
+
+    if LoggingRuntime._refcount == 0 and self.listener is not None:
       self.listener.stop()
       self.listener = None
 
 
 
 def configure_logging(logging_queue: Queue, logging_level: int) -> logging.Logger:
-  logger = logging.getLogger(LILOTA_LOGGER_NAME)
+  logger = logging.getLogger(f"{LILOTA_LOGGER_NAME}.{id(logging_queue)}")
   logger.setLevel(logging_level)
 
   if not any(isinstance(h, QueueHandler) for h in logger.handlers):

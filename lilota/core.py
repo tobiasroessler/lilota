@@ -4,7 +4,7 @@ from multiprocessing import cpu_count, Queue
 from lilota.models import NodeType, NodeStatus, TaskProgress, RegisteredTask
 from lilota.stores import SqlAlchemyNodeStore, SqlAlchemyNodeLeaderStore, SqlAlchemyTaskStore
 from lilota.runner import TaskRunner
-from lilota.heartbeat import HeartbeatThreadBase, SchedulerHeartbeatThread, WorkerHeartbeatThread
+from lilota.heartbeat import HeartbeatThreadBase, SchedulerHeartbeatThread, WorkerHeartbeatThread, TaskHeartbeatThread
 from lilota.db.alembic import upgrade_db
 from lilota.logging import configure_logging, create_context_logger, LoggingRuntime
 import logging
@@ -26,6 +26,7 @@ class LilotaNode(ABC):
     self._db_url = db_url
     self._node_type = node_type
     self._heartbeat_interval_sec = heartbeat_interval_sec
+    self._heartbeat_join_timeout_in_sec = 60
     self._node_timeout_sec = node_timeout_sec
     self._node_id = None
     self._node_store = None
@@ -39,11 +40,14 @@ class LilotaNode(ABC):
 
     # Setup logging
     self._logging_runtime = LoggingRuntime(db_url, logging_level)
-    self._runtime = self._logging_runtime.get()
+    self._runtime = self._logging_runtime
     self._logger = configure_logging(self._runtime.queue, logging_level)
 
 
   def start(self):
+    # Start logging first
+    self._logging_runtime.start()
+
     if not self._node_id:
       # Create stores
       self._node_store = SqlAlchemyNodeStore(self._db_url, self._logger)
@@ -81,6 +85,9 @@ class LilotaNode(ABC):
     # Log Node stopped message
     self._logger.info("Node stopped")
 
+    # Stop logging runtime after final log
+    self._logging_runtime.stop()
+
 
   def get_nodes(self):
     return self._node_store.get_all_nodes()
@@ -104,11 +111,11 @@ class LilotaNode(ABC):
     return success
   
 
-  def _stop_heartbeat(self):
+  def _stop_node_heartbeat(self):
     # Stop heartbeat thread
     if self._heartbeat:
       self._heartbeat.stop()
-      self._heartbeat.join(timeout=5)
+      self._heartbeat.join(timeout=self._heartbeat_join_timeout_in_sec)
       self._heartbeat = None
 
 
@@ -143,10 +150,6 @@ class LilotaScheduler(LilotaNode):
       **kwargs,
     )
 
-    # Configure logging for main process
-    # configure_logging(self._runtime.queue, self._logging_level)
-    # self._logger = logging.getLogger(self._logger_name)
-
 
   def _on_start(self):
     pass
@@ -158,6 +161,7 @@ class LilotaScheduler(LilotaNode):
       node_id=self._node_id,
       logger=self._logger,
       interval_seconds=self._heartbeat_interval_sec,
+      node_timeout_sec=self._node_timeout_sec,
       node_store=self._node_store
     )
     self._heartbeat.start()
@@ -168,7 +172,7 @@ class LilotaScheduler(LilotaNode):
 
   def _on_stop(self):
     # Stop heartbeat thread
-    self._stop_heartbeat()
+    self._stop_node_heartbeat()
 
 
   def schedule(self, name: str, input: Any = None) -> int:
@@ -205,10 +209,6 @@ class LilotaWorker(LilotaNode):
     self._number_of_processes = number_of_processes
     self._set_progress_manually = set_progress_manually
     self._registry = {}
-
-    # Configure logging for main process
-    #configure_logging(self._runtime.queue, self._logging_level)
-    #self._logger = logging.getLogger(self._logger_name)
 
     # Initialize the task runner (must be done here otherwise register will not work!!!)
     self._runner = TaskRunner(
@@ -277,7 +277,7 @@ class LilotaWorker(LilotaNode):
     # Create node leader store
     node_leader_store = SqlAlchemyNodeLeaderStore(self._db_url, self._logger, self._node_timeout_sec)
 
-    # Start heartbeat thread
+    # Start worker heartbeat thread
     self._heartbeat = WorkerHeartbeatThread(
       node_id=self._node_id,
       logger=self._logger,
@@ -288,6 +288,10 @@ class LilotaWorker(LilotaNode):
     )
     self._heartbeat.start()
 
+    # Start task heartbeat thread
+    self._task_heartbeat = TaskHeartbeatThread("task_heartbeat")
+    self._task_heartbeat.start()
+
     # Log Node started message
     self._logger.info("Worker started")
 
@@ -296,8 +300,18 @@ class LilotaWorker(LilotaNode):
     # Stop the task runner
     self._runner.stop()
 
-    # Stop heartbeat thread
-    self._stop_heartbeat()
+    # Stop task heartbeat thread
+    self._stop_task_heartbeat()
+
+    # Stop worker heartbeat thread
+    self._stop_node_heartbeat()
+
+
+  def _stop_task_heartbeat(self):
+    if self._task_heartbeat:
+      self._task_heartbeat.stop()
+      self._task_heartbeat.join(timeout=self._heartbeat_join_timeout_in_sec)
+      self._task_heartbeat = None
 
 
 
