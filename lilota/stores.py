@@ -139,12 +139,44 @@ class SqlAlchemyTaskStore(StoreBase):
       )
 
 
-  def get_task_by_id(self, id: uuid4):
+  def get_task_by_id(self, id: uuid4) -> Task:
     with self._get_session() as session:
       task = session.get(Task, id)
       if task is None:
         return None
       return task
+    
+
+  def get_next_task(self, worker_id: uuid4) -> Task:
+    with self._get_session() as session:
+      task_id = session.execute(
+        select(Task.id)
+        .where(Task.status == "pending")
+        .where(Task.run_at <= datetime.now(timezone.utc))
+        .order_by(Task.run_at)
+        .limit(1)
+      ).scalar()
+
+      if not task_id:
+        return None
+      
+      result = session.execute(
+        update(Task)
+        .where(Task.id == task_id)
+        .where(Task.status == "pending")
+        .values(
+          status="running",
+          locked_at=datetime.now(timezone.utc),
+          locked_by=worker_id,
+        )
+      )
+
+      session.commit()
+
+      if result.rowcount != 1:
+        return None
+      
+      return session.get(Task, task_id)
 
 
   def start_task(self, id: uuid4) -> Task:

@@ -1,5 +1,5 @@
 from typing import Any, Callable, Type, TypeVar, Optional, Any, Protocol, runtime_checkable
-from sqlalchemy import Integer, String, Text, DateTime, JSON, CheckConstraint
+from sqlalchemy import Integer, String, Text, DateTime, JSON, CheckConstraint, Index
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column
 from datetime import datetime, timezone
 from dataclasses import is_dataclass, asdict
@@ -123,14 +123,8 @@ class Node(Base):
     default=uuid4
   )
   name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-  type: Mapped[str] = mapped_column(
-    String(32),
-    nullable=False
-  )
-  status: Mapped[str] = mapped_column(
-    String(32),
-    nullable=False
-  )
+  type: Mapped[str] = mapped_column(String(32), nullable=False)
+  status: Mapped[str] = mapped_column(String(32), nullable=False)
   created_at: Mapped[datetime] = mapped_column(
     DateTime, default=lambda: datetime.now(timezone.utc),
     nullable=False
@@ -160,15 +154,25 @@ class Task(Base):
     default=uuid4
   )
   name: Mapped[str] = mapped_column(String, nullable=False)
-  pid: Mapped[int] = mapped_column(default=0, nullable=False)
+  pid: Mapped[int] = mapped_column(nullable=False, default=0)
   status: Mapped[str] = mapped_column(
     String(32),
+    nullable=False,
     default=TaskStatus.PENDING,
-    nullable=False
+    index=False
   )
+  run_at: Mapped[datetime] = mapped_column(
+    DateTime, 
+    nullable=False,
+    default=lambda: datetime.now(timezone.utc)
+  )
+  attempts: Mapped[int] = mapped_column(nullable=False, default=0)
+  max_attempts: Mapped[int] = mapped_column(nullable=False, default=1)
+  timeout: Mapped[int | None] = mapped_column(nullable=True, default=None)
   progress_percentage: Mapped[int] = mapped_column(default=0)
   start_date_time: Mapped[datetime] = mapped_column(
-    DateTime, default=lambda: datetime.now(timezone.utc)
+    DateTime, 
+    default=lambda: datetime.now(timezone.utc)
   )
   end_date_time: Mapped[datetime | None] = mapped_column(DateTime)
   input: Mapped[Any | None] = mapped_column(JSON)
@@ -179,9 +183,10 @@ class Task(Base):
 
   __table_args__ = (
     CheckConstraint(
-        "status IN ('pending', 'running', 'completed', 'failed', 'cancelled')",
-        name="lilota_task_status_check"
+      "status IN ('pending', 'running', 'completed', 'failed', 'cancelled')",
+      name="lilota_task_status_check"
     ),
+    Index("idx_get_next_task", "status", "run_at"),
   )
 
   def __repr__(self):
