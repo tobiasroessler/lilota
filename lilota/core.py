@@ -1,14 +1,84 @@
 from abc import ABC, abstractmethod
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Type, Optional, Dict, Any
 from multiprocessing import cpu_count, Queue
 from lilota.models import NodeType, NodeStatus, TaskProgress, RegisteredTask
 from lilota.stores import SqlAlchemyNodeStore, SqlAlchemyNodeLeaderStore, SqlAlchemyTaskStore
 from lilota.runner import TaskRunner
-from lilota.heartbeat import HeartbeatThreadBase, SchedulerHeartbeatThread, WorkerHeartbeatThread, TaskHeartbeatThread
+from lilota.heartbeat import Heartbeat, TaskHeartbeatThread, HeartbeatTask
 from lilota.db.alembic import upgrade_db
 from lilota.logging import configure_logging, create_context_logger, LoggingRuntime
 import logging
 from uuid import uuid4
+
+
+
+class NodeHeartbeatTask(HeartbeatTask):
+
+  def __init__(self, interval: float, node_id: str, node_store: SqlAlchemyNodeStore, logger: logging.Logger):
+    super().__init__(interval)
+    self._node_id = node_id
+    self._node_store = node_store
+    self._logger = logger
+
+
+  def execute(self):
+    # Update last_seen_at
+    try:
+      self._node_store.update_node_last_seen_at(self._node_id)
+    except Exception:
+      self._logger.exception(f"Heartbeat update failed for node_id '{self._node_id}'")
+
+
+
+class WorkerHeartbeatTask(NodeHeartbeatTask):
+
+  def __init__(self, interval: float, node_id: str, node_timeout_sec: int, node_store: SqlAlchemyNodeStore, node_leader_store: SqlAlchemyNodeLeaderStore, logger: logging.Logger):
+    super().__init__(interval, node_id, node_store, logger)
+    self._node_timeout_sec = node_timeout_sec
+    self._node_leader_store = node_leader_store
+    self._is_leader = False
+    
+
+  def execute(self):
+    # Update last_seen_at
+    super().execute()
+
+    # Try to set leader and the leader should trigger a cleanup
+    try:
+      self._try_set_leader_and_cleanup()
+    except Exception:
+      self._logger.exception("Leader election failed")
+
+
+  def _try_set_leader_and_cleanup(self):
+    # Try to renew leadership
+    if self._is_leader:
+      self.is_leader = self._node_leader_store.renew_leadership(self._node_id)
+
+      if not self._is_leader:
+        self._logger.warning(f"Leadership lost")
+
+    # Try to acquire leadership if not leader
+    if not self._is_leader:
+      self._is_leader = self._node_leader_store.try_acquire_leadership(self._node_id)
+
+    # Leader-only work
+    if self._is_leader:
+      self._cleanup()
+
+
+  def _cleanup(self) -> None:
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=self._node_timeout_sec)
+
+    try:
+      cleaned = self._node_store.update_nodes_status_on_dead_nodes(cutoff, self._node_id)
+      if cleaned > 0:
+        self._logger.info(f"Marked {cleaned} stale node(s) as DEAD")
+    except Exception:
+      # Never let cleanup kill the heartbeat thread
+      self._logger.exception("Node cleanup failed")
+
 
 
 class LilotaNode(ABC):
@@ -18,20 +88,20 @@ class LilotaNode(ABC):
     *,
     db_url: str,
     node_type: NodeType,
-    heartbeat_interval_sec: int,
+    heartbeat_interval: float,
     node_timeout_sec: int,
     logger_name: str,
     logging_level):
 
     self._db_url = db_url
     self._node_type = node_type
-    self._heartbeat_interval_sec = heartbeat_interval_sec
+    self._heartbeat_interval = heartbeat_interval
     self._heartbeat_join_timeout_in_sec = 60
     self._node_timeout_sec = node_timeout_sec
     self._node_id = None
     self._node_store = None
     self._task_store = None
-    self._heartbeat: HeartbeatThreadBase = None
+    self._heartbeat: Heartbeat = None
     self._logger_name = logger_name
     self._logging_level = logging_level
 
@@ -114,8 +184,7 @@ class LilotaNode(ABC):
   def _stop_node_heartbeat(self):
     # Stop heartbeat thread
     if self._heartbeat:
-      self._heartbeat.stop()
-      self._heartbeat.join(timeout=self._heartbeat_join_timeout_in_sec)
+      self._heartbeat.stop_and_join(timeout=self._heartbeat_join_timeout_in_sec)
       self._heartbeat = None
 
 
@@ -135,15 +204,21 @@ class LilotaNode(ABC):
 
 
 
+class SchedulerHeartbeatTask(HeartbeatTask):
+
+  def execute(self):
+    pass
+
+
 class LilotaScheduler(LilotaNode):
 
   LOGGER_NAME = "lilota.scheduler"
 
-  def __init__(self, db_url: str, heartbeat_interval_sec: int = 5, node_timeout_sec: int = 20, logging_level=logging.INFO, **kwargs):
+  def __init__(self, db_url: str, heartbeat_interval: float = 5.0, node_timeout_sec: int = 20, logging_level=logging.INFO, **kwargs):
     super().__init__(
       db_url=db_url,
       node_type=NodeType.SCHEDULER,
-      heartbeat_interval_sec=heartbeat_interval_sec,
+      heartbeat_interval=heartbeat_interval,
       node_timeout_sec=node_timeout_sec,
       logger_name=self.LOGGER_NAME,
       logging_level=logging_level,
@@ -157,13 +232,13 @@ class LilotaScheduler(LilotaNode):
 
   def _on_started(self):
     # Start heartbeat thread
-    self._heartbeat = SchedulerHeartbeatThread(
-      node_id=self._node_id,
-      logger=self._logger,
-      interval_seconds=self._heartbeat_interval_sec,
-      node_timeout_sec=self._node_timeout_sec,
-      node_store=self._node_store
+    heartbeat_task = NodeHeartbeatTask(
+      self._heartbeat_interval, 
+      self._node_id, 
+      self._node_store, 
+      self._logger
     )
+    self._heartbeat = Heartbeat(f"scheduler_heartbeat_{self._node_id}", heartbeat_task, self._logger)
     self._heartbeat.start()
 
     # Log Node started message
@@ -189,7 +264,7 @@ class LilotaWorker(LilotaNode):
   def __init__(
     self,
     db_url: str,
-    heartbeat_interval_sec: int = 5,
+    heartbeat_interval: float = 5.0,
     node_timeout_sec: int = 20,
     number_of_processes=cpu_count(),
     set_progress_manually=False,
@@ -199,7 +274,7 @@ class LilotaWorker(LilotaNode):
     super().__init__(
       db_url=db_url,
       node_type=NodeType.WORKER,
-      heartbeat_interval_sec=heartbeat_interval_sec,
+      heartbeat_interval=heartbeat_interval,
       node_timeout_sec=node_timeout_sec,
       logger_name=self.LOGGER_NAME,
       logging_level=logging_level,
@@ -278,14 +353,15 @@ class LilotaWorker(LilotaNode):
     node_leader_store = SqlAlchemyNodeLeaderStore(self._db_url, self._logger, self._node_timeout_sec)
 
     # Start worker heartbeat thread
-    self._heartbeat = WorkerHeartbeatThread(
-      node_id=self._node_id,
-      logger=self._logger,
-      interval_seconds=self._heartbeat_interval_sec,
-      node_timeout_sec=self._node_timeout_sec,
-      node_store=self._node_store,
-      node_leader_store=node_leader_store
+    heartbeat_task = WorkerHeartbeatTask(
+      self._heartbeat_interval, 
+      self._node_id, 
+      self._node_timeout_sec, 
+      self._node_store,
+      node_leader_store,
+      self._logger
     )
+    self._heartbeat = Heartbeat(f"scheduler_heartbeat_{self._node_id}", heartbeat_task, self._logger)
     self._heartbeat.start()
 
     # Start task heartbeat thread

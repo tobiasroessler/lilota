@@ -92,7 +92,7 @@ class LilotaWorkerTestCase(TestCase):
 
   def test_start___with_heartbeat___should_start_the_heartbeat(self):
     # Arrange
-    worker = LilotaWorker(LilotaWorkerTestCase.DB_URL, heartbeat_interval_sec=1)
+    worker = LilotaWorker(LilotaWorkerTestCase.DB_URL, heartbeat_interval=1.0)
     worker.start()
 
     try:
@@ -116,7 +116,7 @@ class LilotaWorkerTestCase(TestCase):
 
   def test_stop___with_heartbeat___should_stop_the_heartbeat(self):
     # Arrange
-    worker = LilotaWorker(LilotaWorkerTestCase.DB_URL, heartbeat_interval_sec=1)
+    worker = LilotaWorker(LilotaWorkerTestCase.DB_URL, heartbeat_interval=1.0)
     worker.start()
 
     try:
@@ -198,7 +198,7 @@ class LilotaWorkerTestCase(TestCase):
       session.query(NodeLeader).delete()
       worker = LilotaWorker(
         LilotaWorkerTestCase.DB_URL, 
-        heartbeat_interval_sec=1, 
+        heartbeat_interval=1.0, 
         node_timeout_sec=20
       )
       node_leader = session.get(NodeLeader, 1)
@@ -232,7 +232,7 @@ class LilotaWorkerTestCase(TestCase):
       session.query(Node).delete()
       worker1 = LilotaWorker(
         LilotaWorkerTestCase.DB_URL, 
-        heartbeat_interval_sec=1, 
+        heartbeat_interval=1.0, 
         node_timeout_sec=2
       )
       node_leader = session.get(NodeLeader, 1)
@@ -251,7 +251,7 @@ class LilotaWorkerTestCase(TestCase):
     # Act
     worker2 = LilotaWorker(
       LilotaWorkerTestCase.DB_URL, 
-      heartbeat_interval_sec=1, 
+      heartbeat_interval=1.0, 
       node_timeout_sec=2
     )
     worker2.start()
@@ -289,11 +289,11 @@ class LilotaWorkerTestCase(TestCase):
       self.assertIsNone(node_leader)
       session.commit()
 
-    worker1 = LilotaWorker(LilotaWorkerTestCase.DB_URL, heartbeat_interval_sec=1, node_timeout_sec=2)
+    worker1 = LilotaWorker(LilotaWorkerTestCase.DB_URL, heartbeat_interval=1.0, node_timeout_sec=2)
     worker1.start()
     time.sleep(2)
 
-    worker2 = LilotaWorker(LilotaWorkerTestCase.DB_URL, heartbeat_interval_sec=1, node_timeout_sec=2)
+    worker2 = LilotaWorker(LilotaWorkerTestCase.DB_URL, heartbeat_interval=1.0, node_timeout_sec=2)
     worker2.start()
     time.sleep(2)
 

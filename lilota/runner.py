@@ -151,7 +151,7 @@ class TaskRunner():
       self._processes.clear()
       self._is_started = False
     except Exception as ex:
-      self._logger.exception(str(ex))
+      self._logger.exception("Exception occurred during the stopping process of the taskrunner")
     finally:
       self._logger.info("Taskrunner stopped")
 

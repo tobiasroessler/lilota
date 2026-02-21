@@ -88,7 +88,7 @@ class LilotaSchedulerTestCase(TestCase):
 
   def test_start___with_heartbeat___should_start_the_heartbeat(self):
     # Arrange
-    lilota = LilotaScheduler(LilotaSchedulerTestCase.DB_URL, heartbeat_interval_sec=1)
+    lilota = LilotaScheduler(LilotaSchedulerTestCase.DB_URL, heartbeat_interval=1.0)
     lilota.start()
 
     try:
@@ -112,7 +112,7 @@ class LilotaSchedulerTestCase(TestCase):
 
   def test_stop___with_heartbeat___should_stop_the_heartbeat(self):
     # Arrange
-    lilota = LilotaScheduler(LilotaSchedulerTestCase.DB_URL, heartbeat_interval_sec=1)
+    lilota = LilotaScheduler(LilotaSchedulerTestCase.DB_URL, heartbeat_interval=1.0)
     lilota.start()
 
     try:
