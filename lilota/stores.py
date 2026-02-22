@@ -303,7 +303,7 @@ class SqlAlchemyNodeLeaderStore(StoreBase):
 
       if result.rowcount == 1:
         session.commit()
-        self._logger.info("Leadership acquired (takeover)")
+        self._logger.debug("Leadership acquired (takeover)")
         return True
 
       # Check if row exists
@@ -324,7 +324,7 @@ class SqlAlchemyNodeLeaderStore(StoreBase):
         )
       )
       session.commit()
-      self._logger.info("Leadership acquired (first leader)")
+      self._logger.debug("Leadership acquired (first leader)")
       return True
     except IntegrityError:
         # Someone else won the race to insert

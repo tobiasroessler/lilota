@@ -9,7 +9,9 @@ from multiprocessing import cpu_count
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from lilota.core import Lilota
-from lilota.models import Task, TaskStatus, TaskProgress
+from lilota.scheduler import LilotaScheduler
+from lilota.worker import LilotaWorker
+from lilota.models import Node, Task, TaskStatus, TaskProgress
 from lilota.db.alembic import get_alembic_config
 
 
@@ -112,6 +114,14 @@ class LilotaTestCase(TestCase):
 
   DB_URL = "postgresql+psycopg://postgres:postgres@localhost:5433/lilota_test"
 
+
+  @classmethod
+  def get_session(cls):
+    engine = create_engine(cls.DB_URL)
+    Session = sessionmaker(bind=engine)
+    return Session()
+  
+
   @classmethod
   def setUpClass(cls):
     super().setUpClass()
@@ -123,15 +133,11 @@ class LilotaTestCase(TestCase):
     except Exception as ex:
       raise Exception(f"Could not update the database: {str(ex)}")
     
-    # Create SQLAlchemy engine and session
-    engine = create_engine(cls.DB_URL)
-    Session = sessionmaker(bind=engine)
-    session = Session()
-
-    # Delete all tasks
-    session.query(Task).delete()
-    session.commit()
-    session.close()
+    # Create SqlAlchemy engine and session
+    with LilotaTestCase.get_session() as session:
+      session.query(Task).delete()
+      session.query(Node).delete()
+      session.commit()
 
 
   def setUp(self):
@@ -140,7 +146,7 @@ class LilotaTestCase(TestCase):
 
   def test_register___nothing_is_registered___should_not_have_any_registration(self):
     # Arrange & Act
-    lilota = Lilota(LilotaTestCase.DB_URL, number_of_processes=1)
+    lilota = LilotaWorker(LilotaTestCase.DB_URL, number_of_processes=1)
 
     # Assert
     self.assertEqual(len(lilota._runner._registrations), 0)

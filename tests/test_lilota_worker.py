@@ -7,11 +7,10 @@ from unittest import TestCase, main
 from multiprocessing import cpu_count
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from lilota.core import LilotaScheduler, LilotaWorker
-from lilota.logging import LoggingRuntime, configure_logging
-from lilota.models import Node, NodeType, NodeStatus, NodeLeader, Task, TaskStatus, TaskProgress, LogEntry
+from lilota.worker import LilotaWorker
+from lilota.models import Node, NodeType, NodeStatus, NodeLeader, Task, LogEntry
 from lilota.db.alembic import get_alembic_config
-from lilota.stores import SqlAlchemyLogStore, SqlAlchemyNodeLeaderStore
+from lilota.stores import SqlAlchemyLogStore
 import logging
 import time
 
@@ -59,7 +58,7 @@ class LilotaWorkerTestCase(TestCase):
     except Exception as ex:
       raise Exception(f"Could not update the database: {str(ex)}")
     
-    # Create SQLAlchemy engine and session
+    # Create SqlAlchemy engine and session
     with LilotaWorkerTestCase.get_session() as session:
       # Delete all tasks and nodes
       session.query(Task).delete()
@@ -140,7 +139,7 @@ class LilotaWorkerTestCase(TestCase):
 
   def test_logging___when_starting_scheduler___should_log_correctly(self):
     # Arrange
-    worker = LilotaWorker(LilotaWorkerTestCase.DB_URL)
+    worker = LilotaWorker(LilotaWorkerTestCase.DB_URL, logging_level=logging.DEBUG)
     log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaWorkerTestCase.DB_URL)
 
     # Act
@@ -161,8 +160,8 @@ class LilotaWorkerTestCase(TestCase):
 
   def test_logging___when_starting_scheduler_twice___should_log_correctly(self):
     # Arrange
-    worker1 = LilotaWorker(LilotaWorkerTestCase.DB_URL)
-    worker2 = LilotaWorker(LilotaWorkerTestCase.DB_URL)
+    worker1 = LilotaWorker(LilotaWorkerTestCase.DB_URL, logging_level=logging.DEBUG)
+    worker2 = LilotaWorker(LilotaWorkerTestCase.DB_URL, logging_level=logging.DEBUG)
     log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaWorkerTestCase.DB_URL)
 
     # Act
@@ -199,7 +198,8 @@ class LilotaWorkerTestCase(TestCase):
       worker = LilotaWorker(
         LilotaWorkerTestCase.DB_URL, 
         heartbeat_interval=1.0, 
-        node_timeout_sec=20
+        node_timeout_sec=20,
+        logging_level=logging.DEBUG
       )
       node_leader = session.get(NodeLeader, 1)
       self.assertIsNone(node_leader)
@@ -233,7 +233,8 @@ class LilotaWorkerTestCase(TestCase):
       worker1 = LilotaWorker(
         LilotaWorkerTestCase.DB_URL, 
         heartbeat_interval=1.0, 
-        node_timeout_sec=2
+        node_timeout_sec=2,
+        logging_level=logging.DEBUG
       )
       node_leader = session.get(NodeLeader, 1)
       self.assertIsNone(node_leader)
@@ -252,7 +253,8 @@ class LilotaWorkerTestCase(TestCase):
     worker2 = LilotaWorker(
       LilotaWorkerTestCase.DB_URL, 
       heartbeat_interval=1.0, 
-      node_timeout_sec=2
+      node_timeout_sec=2,
+      logging_level=logging.DEBUG
     )
     worker2.start()
     time.sleep(2)

@@ -25,7 +25,7 @@ def _execute(queue: Queue, registrations: dict[str, RegisteredTask], sentinel: s
       logger = create_context_logger(logger, node_id=node_id, task_id=id)
 
       try:
-        logger.info(f"Execute task (id: {id}, registered name: {name})")
+        logger.debug(f"Execute task (id: {id}, registered name: {name})")
 
         # Get the function to execute
         registered_task = registrations[name]
@@ -98,7 +98,7 @@ class TaskRunner():
       # Start the processes
       self._start_processes(node_id)
       self._is_started = True
-      self._logger.info(f"Taskrunner started ({self._number_of_processes} process(es) used)")
+      self._logger.debug(f"Taskrunner started ({self._number_of_processes} process(es) used)")
 
       # Start unfinished tasks
       self._restart_unfinished_tasks()
@@ -153,7 +153,7 @@ class TaskRunner():
     except Exception as ex:
       self._logger.exception("Exception occurred during the stopping process of the taskrunner")
     finally:
-      self._logger.info("Taskrunner stopped")
+      self._logger.debug("Taskrunner stopped")
 
 
   def _start_processes(self, node_id: uuid4):

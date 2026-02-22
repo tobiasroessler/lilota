@@ -4,15 +4,13 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from alembic import command
 from dataclasses import dataclass
 from unittest import TestCase, main
-from typing import Any
-from multiprocessing import cpu_count
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from lilota.core import LilotaScheduler
-from lilota.models import Node, NodeType, NodeStatus, Task, TaskStatus, TaskProgress, LogEntry
+from lilota.scheduler import LilotaScheduler
+from lilota.models import Node, NodeType, NodeStatus, Task, TaskStatus, LogEntry
 from lilota.db.alembic import get_alembic_config
-from lilota.logging import LoggingRuntime
 from lilota.stores import SqlAlchemyLogStore
+import logging
 import time
 
 
@@ -40,6 +38,14 @@ class LilotaSchedulerTestCase(TestCase):
 
   DB_URL = "postgresql+psycopg://postgres:postgres@localhost:5433/lilota_test"
 
+
+  @classmethod
+  def get_session(cls):
+    engine = create_engine(cls.DB_URL)
+    Session = sessionmaker(bind=engine)
+    return Session()
+  
+
   @classmethod
   def setUpClass(cls):
     super().setUpClass()
@@ -51,16 +57,11 @@ class LilotaSchedulerTestCase(TestCase):
     except Exception as ex:
       raise Exception(f"Could not update the database: {str(ex)}")
     
-    # Create SQLAlchemy engine and session
-    engine = create_engine(cls.DB_URL)
-    Session = sessionmaker(bind=engine)
-    session = Session()
-
-    # Delete all tasks and nodes
-    session.query(Task).delete()
-    session.query(Node).delete()
-    session.commit()
-    session.close()
+    # Create SqlAlchemy engine and session
+    with LilotaSchedulerTestCase.get_session() as session:
+      session.query(Task).delete()
+      session.query(Node).delete()
+      session.commit()
 
 
   def setUp(self):
@@ -160,7 +161,7 @@ class LilotaSchedulerTestCase(TestCase):
 
   def test_logging___when_starting_scheduler___should_log_correctly(self):
     # Arrange
-    lilota = LilotaScheduler(LilotaSchedulerTestCase.DB_URL)
+    lilota = LilotaScheduler(LilotaSchedulerTestCase.DB_URL, logging_level=logging.DEBUG)
     log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaSchedulerTestCase.DB_URL)
 
     # Act
@@ -179,7 +180,7 @@ class LilotaSchedulerTestCase(TestCase):
 
   def test_logging___when_starting_scheduler_stopping_and_starting_it_again___should_log_correctly(self):
     # Arrange
-    lilota = LilotaScheduler(LilotaSchedulerTestCase.DB_URL)
+    lilota = LilotaScheduler(LilotaSchedulerTestCase.DB_URL, logging_level=logging.DEBUG)
     log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaSchedulerTestCase.DB_URL)
     lilota.start()
     lilota.stop()
@@ -203,8 +204,8 @@ class LilotaSchedulerTestCase(TestCase):
 
   def test_logging___when_starting_scheduler_twice___should_log_correctly(self):
     # Arrange
-    lilota1 = LilotaScheduler(LilotaSchedulerTestCase.DB_URL)
-    lilota2 = LilotaScheduler(LilotaSchedulerTestCase.DB_URL)
+    lilota1 = LilotaScheduler(LilotaSchedulerTestCase.DB_URL, logging_level=logging.DEBUG)
+    lilota2 = LilotaScheduler(LilotaSchedulerTestCase.DB_URL, logging_level=logging.DEBUG)
     log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaSchedulerTestCase.DB_URL)
 
     # Act

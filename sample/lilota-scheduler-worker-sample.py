@@ -2,9 +2,8 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from dataclasses import dataclass
-from lilota.core import LilotaScheduler, LilotaWorker
-from lilota.models import Node, Task
-import time
+from lilota.scheduler import LilotaScheduler
+from lilota.worker import LilotaWorker
 import logging
 
 
