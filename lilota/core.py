@@ -5,7 +5,7 @@ from multiprocessing import cpu_count, Queue
 from lilota.models import NodeType, NodeStatus, TaskProgress, RegisteredTask
 from lilota.stores import SqlAlchemyNodeStore, SqlAlchemyNodeLeaderStore, SqlAlchemyTaskStore
 from lilota.runner import TaskRunner
-from lilota.heartbeat import Heartbeat, TaskHeartbeatThread, HeartbeatTask
+from lilota.heartbeat import Heartbeat, HeartbeatTask
 from lilota.db.alembic import upgrade_db
 from lilota.logging import configure_logging, create_context_logger, LoggingRuntime
 import logging
@@ -78,6 +78,32 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
     except Exception:
       # Never let cleanup kill the heartbeat thread
       self._logger.exception("Node cleanup failed")
+
+
+
+class TaskHeartbeatTask(HeartbeatTask):
+
+  def __init__(self, interval: float, max_interval: float, node_id: uuid4, task_store: SqlAlchemyTaskStore, runner: TaskRunner, logger: logging.Logger):
+    super().__init__(interval)
+    self._max_interval = max_interval
+    self._node_id = node_id
+    self._task_store = task_store
+    self._runner = runner
+    self._logger = logger
+
+
+  def execute(self):
+    # Get the next available task
+    task = self._task_store.get_next_task(self._node_id)
+    if task:
+      # Set the interval
+      self.interval = 0.1
+
+      # Execute the task
+      self._runner.add(task.name, task.input)
+    else:
+      # Increase the interval
+      self.interval = min(self.interval * 2, self._max_interval)
 
 
 
@@ -204,12 +230,6 @@ class LilotaNode(ABC):
 
 
 
-class SchedulerHeartbeatTask(HeartbeatTask):
-
-  def execute(self):
-    pass
-
-
 class LilotaScheduler(LilotaNode):
 
   LOGGER_NAME = "lilota.scheduler"
@@ -266,6 +286,8 @@ class LilotaWorker(LilotaNode):
     db_url: str,
     heartbeat_interval: float = 5.0,
     node_timeout_sec: int = 20,
+    task_heartbeat_interval: float = 0.1,
+    max_task_heartbeat_interval: float = 5.0,
     number_of_processes=cpu_count(),
     set_progress_manually=False,
     logging_level=logging.INFO,
@@ -281,6 +303,8 @@ class LilotaWorker(LilotaNode):
       **kwargs,
     )
 
+    self._task_heartbeat_interval = task_heartbeat_interval
+    self._max_task_heartbeat_interval = max_task_heartbeat_interval
     self._number_of_processes = number_of_processes
     self._set_progress_manually = set_progress_manually
     self._registry = {}
@@ -365,7 +389,15 @@ class LilotaWorker(LilotaNode):
     self._heartbeat.start()
 
     # Start task heartbeat thread
-    self._task_heartbeat = TaskHeartbeatThread("task_heartbeat")
+    task_heartbeat_task = TaskHeartbeatTask(
+      self._task_heartbeat_interval,
+      self._max_task_heartbeat_interval,
+      self._node_id,
+      self._task_store,
+      self._runner,
+      self._logger
+    )
+    self._task_heartbeat = Heartbeat("task_heartbeat", task_heartbeat_task, self._logger)
     self._task_heartbeat.start()
 
     # Log Node started message
@@ -385,8 +417,7 @@ class LilotaWorker(LilotaNode):
 
   def _stop_task_heartbeat(self):
     if self._task_heartbeat:
-      self._task_heartbeat.stop()
-      self._task_heartbeat.join(timeout=self._heartbeat_join_timeout_in_sec)
+      self._task_heartbeat.stop_and_join(timeout=self._heartbeat_join_timeout_in_sec)
       self._task_heartbeat = None
 
 
