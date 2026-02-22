@@ -1,7 +1,7 @@
 from typing import Any, Callable, Type, TypeVar, Optional, Any, Protocol, runtime_checkable
-from sqlalchemy import Integer, String, Text, DateTime, JSON, CheckConstraint, Index
+from sqlalchemy import Integer, String, Text, DateTime, Interval, JSON, CheckConstraint, Index
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dataclasses import is_dataclass, asdict
 from enum import StrEnum
 from uuid import UUID, uuid4
@@ -146,9 +146,9 @@ class Node(Base):
   )
 
 
+
 class Task(Base):
   __tablename__ = "lilota_task"
-  # id: Mapped[int] = mapped_column(primary_key=True)
   id: Mapped[UUID] = mapped_column(
     primary_key=True,
     default=uuid4
@@ -168,7 +168,7 @@ class Task(Base):
   )
   attempts: Mapped[int] = mapped_column(nullable=False, default=0)
   max_attempts: Mapped[int] = mapped_column(nullable=False, default=1)
-  timeout: Mapped[int | None] = mapped_column(nullable=True, default=None)
+  timeout: Mapped[timedelta | None] = mapped_column(Interval, nullable=True, default=None)
   progress_percentage: Mapped[int] = mapped_column(default=0)
   start_date_time: Mapped[datetime] = mapped_column(
     DateTime, 
