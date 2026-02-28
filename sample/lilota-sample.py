@@ -2,7 +2,7 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from dataclasses import dataclass
-from lilota.core import Lilota
+from lilota.node import Lilota
 from lilota.models import Task
 
 

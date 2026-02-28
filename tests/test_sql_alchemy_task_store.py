@@ -66,13 +66,13 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
     self.assertIsNone(task)
 
 
-  def test_get_next_task___with_one_pending_task___should_return_task(self):
+  def test_get_next_task___with_one_created_task___should_return_task(self):
     # Arrange
     worker_id = uuid4()
     logger = logging.getLogger("test_logger")
     task_id: Task = self.create_task(Task(
       name="test",
-      status=TaskStatus.PENDING,
+      status=TaskStatus.CREATED,
       run_at=datetime.now(timezone.utc),
       locked_by=None,
       locked_at=None
@@ -85,17 +85,18 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
     # Assert
     self.assertIsNotNone(next_task)
     self.assertEqual(next_task.id, task_id)
-    self.assertEqual(next_task.status, TaskStatus.RUNNING)
+    self.assertEqual(next_task.status, TaskStatus.SCHEDULED)
     self.assertIsNotNone(next_task.locked_at)
     self.assertEqual(next_task.locked_by, worker_id)
 
 
-  def test_get_next_task___with_one_task_that_is_not_pending___should_return_none(self):
+  def test_get_next_task___with_one_task_that_is_not_created___should_return_none(self):
     # Arrange
     worker_id = uuid4()
     logger = logging.getLogger("test_logger")
 
     statuses_to_test = [
+      TaskStatus.SCHEDULED,
       TaskStatus.RUNNING,
       TaskStatus.COMPLETED,
       TaskStatus.FAILED,
@@ -119,18 +120,18 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
         self.assertIsNone(next_task)
 
 
-  def test_get_next_task___with_two_pending_tasks___should_return_task_with_smallest_run_at(self):
+  def test_get_next_task___with_two_created_tasks___should_return_task_with_smallest_run_at(self):
     # Arrange
     worker_id = uuid4()
     logger = logging.getLogger("test_logger")
     task1_id: Task = self.create_task(Task(
       name="test",
-      status=TaskStatus.PENDING,
+      status=TaskStatus.CREATED,
       run_at=datetime.now(timezone.utc) + timedelta(minutes=5)
     ))
     task2_id: Task = self.create_task(Task(
       name="test",
-      status=TaskStatus.PENDING,
+      status=TaskStatus.CREATED,
       run_at=datetime.now(timezone.utc)
     ))
     store = SqlAlchemyTaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)

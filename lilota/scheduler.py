@@ -1,5 +1,5 @@
 from typing import Any
-from lilota.core import LilotaNode, NodeHeartbeatTask
+from lilota.node import LilotaNode, NodeHeartbeatTask
 from lilota.models import NodeType
 from lilota.heartbeat import Heartbeat
 import logging

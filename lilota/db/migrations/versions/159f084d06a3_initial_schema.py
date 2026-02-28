@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: 15488378419f
+Revision ID: 159f084d06a3
 Revises: 
-Create Date: 2026-02-22 23:03:56.986738
+Create Date: 2026-02-24 23:08:48.991475
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '15488378419f'
+revision: str = '159f084d06a3'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -60,14 +60,14 @@ def upgrade() -> None:
     sa.Column('max_attempts', sa.Integer(), nullable=False),
     sa.Column('timeout', sa.Interval(), nullable=True),
     sa.Column('progress_percentage', sa.Integer(), nullable=False),
-    sa.Column('start_date_time', sa.DateTime(), nullable=False),
+    sa.Column('start_date_time', sa.DateTime(), nullable=True),
     sa.Column('end_date_time', sa.DateTime(), nullable=True),
     sa.Column('input', sa.JSON(), nullable=True),
     sa.Column('output', sa.JSON(), nullable=True),
     sa.Column('exception', sa.JSON(), nullable=True),
     sa.Column('locked_by', sa.Uuid(), nullable=True),
     sa.Column('locked_at', sa.DateTime(), nullable=True),
-    sa.CheckConstraint("status IN ('pending', 'running', 'completed', 'failed', 'cancelled')", name='lilota_task_status_check'),
+    sa.CheckConstraint("status IN ('created', 'scheduled', 'running', 'completed', 'failed', 'cancelled')", name='lilota_task_status_check'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index('idx_get_next_task', 'lilota_task', ['status', 'run_at'], unique=False)

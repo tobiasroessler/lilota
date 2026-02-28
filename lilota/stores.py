@@ -114,7 +114,7 @@ class SqlAlchemyTaskStore(StoreBase):
     task = Task(
       name=name,
       input=input,
-      status = TaskStatus.PENDING
+      status = TaskStatus.CREATED
     )
     
     with self._get_session() as session:
@@ -133,7 +133,7 @@ class SqlAlchemyTaskStore(StoreBase):
     with self._get_session() as session:
       return (
         session.query(Task)
-          .filter(Task.status.in_([TaskStatus.PENDING,TaskStatus.RUNNING]))
+          .filter(Task.status.in_([TaskStatus.CREATED, TaskStatus.SCHEDULED, TaskStatus.RUNNING]))
           .order_by(Task.id)
           .all()
       )
@@ -149,29 +149,28 @@ class SqlAlchemyTaskStore(StoreBase):
 
   def get_next_task(self, worker_id: uuid4) -> Task:
     with self._get_session() as session:
-      task_id = session.execute(
-        select(Task.id)
-        .where(Task.status == "pending")
-        .where(Task.run_at <= datetime.now(timezone.utc))
-        .order_by(Task.run_at)
-        .limit(1)
-      ).scalar()
+      with session.begin():
+        task_id = session.execute(
+          select(Task.id)
+          .where(Task.status == TaskStatus.CREATED)
+          .where(Task.run_at <= datetime.now(timezone.utc))
+          .order_by(Task.run_at)
+          .limit(1)
+        ).scalar()
 
-      if not task_id:
-        return None
-      
-      result = session.execute(
-        update(Task)
-        .where(Task.id == task_id)
-        .where(Task.status == "pending")
-        .values(
-          status="running",
-          locked_at=datetime.now(timezone.utc),
-          locked_by=worker_id,
+        if not task_id:
+          return None
+        
+        result = session.execute(
+          update(Task)
+          .where(Task.id == task_id)
+          .where(Task.status == TaskStatus.CREATED)
+          .values(
+            status=TaskStatus.SCHEDULED,
+            locked_at=datetime.now(timezone.utc),
+            locked_by=worker_id,
+          )
         )
-      )
-
-      session.commit()
 
       if result.rowcount != 1:
         return None

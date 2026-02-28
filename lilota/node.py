@@ -53,6 +53,7 @@ class LilotaNode(ABC):
     self._heartbeat: Heartbeat = None
     self._logger_name = logger_name
     self._logging_level = logging_level
+    self._is_started = False
 
     # Upgrade the database
     upgrade_db(self._db_url)
@@ -64,6 +65,10 @@ class LilotaNode(ABC):
 
 
   def start(self):
+    # Check if the node is already started
+    if self._is_started:
+      raise Exception("The node is already started")
+
     # Start logging first
     self._logging_runtime.start()
 
@@ -90,8 +95,15 @@ class LilotaNode(ABC):
     # On started
     self._on_started()
 
+    # Set the node as started
+    self._is_started = True
+
 
   def stop(self):
+    # Check if the node was started
+    if not self._is_started:
+      raise Exception("The node cannot be stopped because it was not started")
+
     # Change status to STOPPING
     self._node_store.update_node_status(self._node_id, NodeStatus.STOPPING)
 
@@ -106,6 +118,9 @@ class LilotaNode(ABC):
 
     # Stop logging runtime after final log
     self._logging_runtime.stop()
+
+    # Set the node as not started
+    self._is_started = False
 
 
   def get_nodes(self):

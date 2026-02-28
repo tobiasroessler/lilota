@@ -147,7 +147,7 @@ class LilotaSchedulerTestCase(TestCase):
       # Assert
       task: Task = lilota.get_task_by_id(task_id)
       self.assertEqual(task.name, "add")
-      self.assertEqual(task.status, TaskStatus.PENDING)
+      self.assertEqual(task.status, TaskStatus.CREATED)
       self.assertIsNone(task.exception)
       self.assertEqual(task.progress_percentage, 0)
       self.assertEqual(task.input['a'], 2)

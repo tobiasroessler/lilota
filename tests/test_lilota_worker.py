@@ -72,6 +72,97 @@ class LilotaWorkerTestCase(TestCase):
     pass
 
 
+  def test_register___nothing_is_registered___should_not_have_any_registration(self):
+    # Arrange & Act
+    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL, number_of_processes=1)
+
+    # Assert
+    self.assertEqual(len(lilota._runner._registrations), 0)
+
+
+  def test_register___one_class_is_registered___should_have_one_registration(self):
+    # Arrange
+    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL, number_of_processes=1)
+
+    # Act
+    lilota._register("add_task", AddInput)
+
+    # Assert
+    self.assertEqual(len(lilota._runner._registrations), 1)
+
+
+  def test_register___task_is_already_registered___should_raise_exception(self):
+    # Arrange
+    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL, number_of_processes=1)
+    lilota._register("add_task", AddInput)
+
+    # Act & Assert
+    try:
+      lilota._register("add_task", AddInput)
+    except RuntimeError as err:
+      self.assertEqual(str(err), "Task 'add_task' is already registered")
+
+
+  def test_start___number_of_processes_is_not_set___should_use_cpu_count(self):
+    # Arrange
+    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL)
+    lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
+
+    # Act
+    lilota.start()
+
+    # Assert
+    try:
+      self.assertEqual(lilota._runner._number_of_processes, cpu_count())
+    finally:
+      lilota.stop()
+
+
+  def test_start___number_of_processes_is_set_to_one___should_use_one(self):
+    # Arrange
+    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL, number_of_processes=1)
+    lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
+
+    # Act
+    lilota.start()
+
+    # Assert
+    try:
+      self.assertEqual(lilota._runner._number_of_processes, 1)
+    finally:
+      lilota.stop()
+
+
+  def test_start___number_of_processes_is_greater_than_cpu_count___should_use_cpu_count(self):
+    # Arrange
+    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL, number_of_processes=1000)
+    lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
+
+    # Act
+    lilota.start()
+
+    # Assert
+    try:
+      self.assertEqual(lilota._runner._number_of_processes, cpu_count())
+    finally:
+      lilota.stop()
+
+
+  def test_start___but_started_twice___should_raise_exception(self):
+    # Arrange
+    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL, number_of_processes=1)
+    lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
+    lilota.start()
+
+    # Act & Assert
+    with self.assertRaises(Exception) as context:
+      lilota.start()
+    try:
+      self.assertEqual(str(context.exception), "The node is already started")
+    finally:
+      lilota.stop()
+
+
   def test_start___should_create_node(self):
     # Act
     worker = LilotaWorker(LilotaWorkerTestCase.DB_URL)
@@ -111,6 +202,17 @@ class LilotaWorkerTestCase(TestCase):
       )
     finally:
       worker.stop()
+
+
+  def test_stop___but_start_was_not_executed___should_raise_exception(self):
+    # Arrange
+    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL, number_of_processes=1)
+    lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
+
+    # Act & Assert
+    with self.assertRaises(Exception) as context:
+      lilota.stop()
+    self.assertEqual(str(context.exception), "The node cannot be stopped because it was not started")
 
 
   def test_stop___with_heartbeat___should_stop_the_heartbeat(self):

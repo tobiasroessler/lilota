@@ -1,5 +1,5 @@
 from multiprocessing import Process, Queue, cpu_count
-from typing import Any
+from typing import Any, Callable
 from lilota.logging import configure_logging, create_context_logger
 from lilota.models import Task, RegisteredTask, TaskProgress
 from lilota.stores import SqlAlchemyTaskStore
@@ -20,7 +20,13 @@ def _execute(queue: Queue, registrations: dict[str, RegisteredTask], sentinel: s
   
   # We get the tasks from the queue. If the sentinel is send we stop.
   try:
-    for id, name in iter(queue.get, sentinel):
+    while True:
+      # Get the task or sentinel
+      item = queue.get()
+      if item == sentinel:
+        break
+      id, name = item
+
       # Create context logger
       logger = create_context_logger(logger, node_id=node_id, task_id=id)
 
@@ -70,7 +76,7 @@ class TaskRunner():
     self._logging_level = logging_level
     self._logger = logger
     self._store = SqlAlchemyTaskStore(db_url, logger)
-    self._processes: list[Process] = []
+    self._processes: list[tuple[Process, Callable[..., Any]]] = []
     self._is_started = False
 
 
@@ -99,29 +105,19 @@ class TaskRunner():
       self._start_processes(node_id)
       self._is_started = True
       self._logger.debug(f"Taskrunner started ({self._number_of_processes} process(es) used)")
-
-      # Start unfinished tasks
-      self._restart_unfinished_tasks()
     except Exception as ex:
       self._logger.exception(str(ex))
       raise Exception(f"An error occured when starting the processes: {str(ex)}")
 
 
-  def add(self, name: str, input: Any = None) -> int:
+  def schedule(self, task: Task) -> None:
     try:
       # Check that the task runner is started
       if not self._is_started:
         raise Exception("The task runner must be started first")
-      
-      # Save the task infos in the store
-      self._logger.debug(f"Save task inside the store (name: '{name}', input: {input})")
-      id = self._store.create_task(name, input)
 
       # Add task infos to the queue
-      self._input_queue.put((id, name))
-
-      # return the id of the task
-      return id
+      self._input_queue.put((task.id, task.name))
     except Exception as ex:
       self._logger.exception(str(ex))
       raise ex
@@ -142,9 +138,21 @@ class TaskRunner():
 
     # Afterwards we wait until all processes are done
     try:
-      # Wait for processes
+      # Join workers with timeout
+      still_alive = []
       for p, _ in self._processes:
         p.join()
+        if p.is_alive():
+          still_alive.append(p)
+
+      # Force terminate remaining workers
+      for p in still_alive:
+        self._logger.warning(f"Process {p.pid} did not exit → terminating")
+        p.terminate()
+
+      # Final join to release OS resources
+      for p in still_alive:
+        p.join(timeout=2)
 
       # Cleanup
       self._input_queue = None
@@ -158,7 +166,7 @@ class TaskRunner():
 
   def _start_processes(self, node_id: uuid4):
     for _ in range(self._number_of_processes):
-      p = Process(target=_execute, args=(self._input_queue, self._registrations, self.SENTINEL, node_id, self._db_url, self._logging_queue, self._logging_level, self._set_progress_manually), daemon=True)
+      p = Process(target=_execute, args=(self._input_queue, self._registrations.copy(), self.SENTINEL, node_id, self._db_url, self._logging_queue, self._logging_level, self._set_progress_manually), daemon=False)
       p.start()
       self._processes.append((p, _execute))
 

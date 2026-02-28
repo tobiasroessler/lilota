@@ -11,7 +11,8 @@ Base = declarative_base()
 
 
 class TaskStatus(StrEnum):
-  PENDING = "pending"
+  CREATED = "created"
+  SCHEDULED = "scheduled"
   RUNNING = "running"
   COMPLETED = "completed"
   FAILED = "failed"
@@ -158,7 +159,6 @@ class Task(Base):
   status: Mapped[str] = mapped_column(
     String(32),
     nullable=False,
-    default=TaskStatus.PENDING,
     index=False
   )
   run_at: Mapped[datetime] = mapped_column(
@@ -170,11 +170,8 @@ class Task(Base):
   max_attempts: Mapped[int] = mapped_column(nullable=False, default=1)
   timeout: Mapped[timedelta | None] = mapped_column(Interval, nullable=True, default=None)
   progress_percentage: Mapped[int] = mapped_column(default=0)
-  start_date_time: Mapped[datetime] = mapped_column(
-    DateTime, 
-    default=lambda: datetime.now(timezone.utc)
-  )
-  end_date_time: Mapped[datetime | None] = mapped_column(DateTime)
+  start_date_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+  end_date_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
   input: Mapped[Any | None] = mapped_column(JSON)
   output: Mapped[Any | None] = mapped_column(JSON)
   exception: Mapped[Any | None] = mapped_column(JSON)
@@ -183,7 +180,7 @@ class Task(Base):
 
   __table_args__ = (
     CheckConstraint(
-      "status IN ('pending', 'running', 'completed', 'failed', 'cancelled')",
+      "status IN ('created', 'scheduled', 'running', 'completed', 'failed', 'cancelled')",
       name="lilota_task_status_check"
     ),
     Index("idx_get_next_task", "status", "run_at"),

@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Type, Optional, Any
 from multiprocessing import cpu_count
-from lilota.core import LilotaNode, NodeHeartbeatTask
+from lilota.node import LilotaNode, NodeHeartbeatTask
 from lilota.models import NodeType, TaskProgress, RegisteredTask
 from lilota.stores import SqlAlchemyNodeStore, SqlAlchemyNodeLeaderStore, SqlAlchemyTaskStore
 from lilota.runner import TaskRunner
@@ -80,7 +80,7 @@ class TaskHeartbeatTask(HeartbeatTask):
       self.interval = 0.1
 
       # Execute the task
-      self._runner.add(task.name, task.input)
+      self._runner.schedule(task)
     else:
       # Increase the interval
       self.interval = min(self.interval * 2, self._max_interval)
@@ -207,7 +207,7 @@ class LilotaWorker(LilotaNode):
       self._runner,
       self._logger
     )
-    self._task_heartbeat = Heartbeat("task_heartbeat", task_heartbeat_task, self._logger)
+    self._task_heartbeat = Heartbeat(f"task_heartbeat_{self._node_id}", task_heartbeat_task, self._logger)
     self._task_heartbeat.start()
 
     # Log Node started message
@@ -215,14 +215,17 @@ class LilotaWorker(LilotaNode):
 
 
   def _on_stop(self):
-    # Stop the task runner
-    self._runner.stop()
-
     # Stop task heartbeat thread
     self._stop_task_heartbeat()
 
     # Stop worker heartbeat thread
     self._stop_node_heartbeat()
+
+    # Stop the task runner
+    try:
+      self._runner.stop()
+    except Exception as ex:
+      self._logger.exception("Error when stopping the task runner")
 
 
   def _stop_task_heartbeat(self):
