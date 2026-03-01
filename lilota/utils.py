@@ -12,6 +12,12 @@ def exception_to_dict(ex: Exception) -> dict:
   }
 
 
+def error_to_dict(error_message: str) -> dict:
+  return {
+    "message": error_message
+  }
+
+
 def normalize_data(data: Any) -> dict:
   # Dict
   if isinstance(data, dict):

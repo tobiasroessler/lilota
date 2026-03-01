@@ -174,7 +174,7 @@ class Task(Base):
   end_date_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
   input: Mapped[Any | None] = mapped_column(JSON)
   output: Mapped[Any | None] = mapped_column(JSON)
-  exception: Mapped[Any | None] = mapped_column(JSON)
+  error: Mapped[Any | None] = mapped_column(JSON)
   locked_by: Mapped[UUID | None] = mapped_column(default=None)
   locked_at: Mapped[datetime | None] = mapped_column(nullable=True, default=None)
 

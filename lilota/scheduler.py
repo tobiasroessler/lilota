@@ -10,11 +10,11 @@ class LilotaScheduler(LilotaNode):
 
   LOGGER_NAME = "lilota.scheduler"
 
-  def __init__(self, db_url: str, heartbeat_interval: float = 5.0, node_timeout_sec: int = 20, logging_level=logging.INFO, **kwargs):
+  def __init__(self, db_url: str, node_heartbeat_interval: float = 5.0, node_timeout_sec: int = 20, logging_level=logging.INFO, **kwargs):
     super().__init__(
       db_url=db_url,
       node_type=NodeType.SCHEDULER,
-      heartbeat_interval=heartbeat_interval,
+      node_heartbeat_interval=node_heartbeat_interval,
       node_timeout_sec=node_timeout_sec,
       logger_name=self.LOGGER_NAME,
       logging_level=logging_level,
@@ -22,14 +22,10 @@ class LilotaScheduler(LilotaNode):
     )
 
 
-  def _on_start(self):
-    pass
-
-
   def _on_started(self):
     # Start heartbeat thread
     heartbeat_task = NodeHeartbeatTask(
-      self._heartbeat_interval, 
+      self._node_heartbeat_interval, 
       self._node_id, 
       self._node_store, 
       self._logger
@@ -38,7 +34,7 @@ class LilotaScheduler(LilotaNode):
     self._heartbeat.start()
 
     # Log Node started message
-    self._logger.debug("Scheduler started")
+    self._logger.debug("Node started")
 
 
   def _on_stop(self):

@@ -1,14 +1,12 @@
 from abc import ABC, abstractmethod
 from typing import Callable, Type, Optional, Dict, Any
-from multiprocessing import cpu_count
 from lilota.models import NodeType, NodeStatus, TaskProgress, RegisteredTask
 from lilota.stores import SqlAlchemyNodeStore, SqlAlchemyTaskStore
-from lilota.runner import TaskRunner
 from lilota.heartbeat import Heartbeat, HeartbeatTask
 from lilota.db.alembic import upgrade_db
 from lilota.logging import configure_logging, create_context_logger, LoggingRuntime
 import logging
-from uuid import uuid4
+from uuid import UUID
 
 
 
@@ -37,15 +35,15 @@ class LilotaNode(ABC):
     *,
     db_url: str,
     node_type: NodeType,
-    heartbeat_interval: float,
+    node_heartbeat_interval: float,
     node_timeout_sec: int,
     logger_name: str,
     logging_level):
 
     self._db_url = db_url
     self._node_type = node_type
-    self._heartbeat_interval = heartbeat_interval
-    self._heartbeat_join_timeout_in_sec = 60
+    self._node_heartbeat_interval = node_heartbeat_interval
+    self._node_heartbeat_join_timeout_in_sec = 60
     self._node_timeout_sec = node_timeout_sec
     self._node_id = None
     self._node_store = None
@@ -59,18 +57,15 @@ class LilotaNode(ABC):
     upgrade_db(self._db_url)
 
     # Setup logging
-    self._logging_runtime = LoggingRuntime(db_url, logging_level)
-    self._runtime = self._logging_runtime
-    self._logger = configure_logging(self._runtime.queue, logging_level)
+    # self._logging_runtime = LoggingRuntime(db_url, logging_level)
+    # self._runtime = self._logging_runtime
+    self._logger = configure_logging(self._db_url, logging_level)
 
 
   def start(self):
     # Check if the node is already started
     if self._is_started:
       raise Exception("The node is already started")
-
-    # Start logging first
-    self._logging_runtime.start()
 
     if not self._node_id:
       # Create stores
@@ -86,17 +81,14 @@ class LilotaNode(ABC):
       # Change status to STARTING
       self._node_store.update_node_status(self._node_id, NodeStatus.STARTING)
 
-    # Start additional stuff
-    self._on_start()
-
     # Change status to RUNNING
     self._node_store.update_node_status(self._node_id, NodeStatus.RUNNING)
 
-    # On started
-    self._on_started()
-
     # Set the node as started
     self._is_started = True
+
+    # On started
+    self._on_started()
 
 
   def stop(self):
@@ -116,9 +108,6 @@ class LilotaNode(ABC):
     # Log Node stopped message
     self._logger.debug("Node stopped")
 
-    # Stop logging runtime after final log
-    self._logging_runtime.stop()
-
     # Set the node as not started
     self._is_started = False
 
@@ -131,11 +120,11 @@ class LilotaNode(ABC):
     return self._node_store.get_node_by_id(self._node_id) if self._node_id else None
   
 
-  def get_task_by_id(self, id: uuid4):
+  def get_task_by_id(self, id: UUID):
     return self._task_store.get_task_by_id(id)
   
 
-  def delete_task_by_id(self, id: uuid4):
+  def delete_task_by_id(self, id: UUID):
     self._logger.debug(f"Delete task with id {id}")
     success = self._task_store.delete_task_by_id(id)
     if success:
@@ -148,13 +137,8 @@ class LilotaNode(ABC):
   def _stop_node_heartbeat(self):
     # Stop heartbeat thread
     if self._heartbeat:
-      self._heartbeat.stop_and_join(timeout=self._heartbeat_join_timeout_in_sec)
+      self._heartbeat.stop_and_join(timeout=self._node_heartbeat_join_timeout_in_sec)
       self._heartbeat = None
-
-
-  @abstractmethod
-  def _on_start(self):
-    pass
 
 
   @abstractmethod
@@ -170,14 +154,11 @@ class LilotaNode(ABC):
 
 class Lilota:
 
-  def __init__(self, db_url: str, number_of_processes = cpu_count(), set_progress_manually: bool = False):
+  def __init__(self, db_url: str, set_progress_manually: bool = False):
     self._registry: Dict[str, RegisteredTask] = {}
 
     # Upgrade the database
     upgrade_db(db_url)
-
-    # Initialize the task runner
-    self._runner = TaskRunner(db_url, number_of_processes=number_of_processes, set_progress_manually=set_progress_manually)
 
 
   def _register(
@@ -239,10 +220,10 @@ class Lilota:
     self._runner.stop()
   
 
-  def get_task_by_id(self, id: uuid4):
+  def get_task_by_id(self, id: UUID):
     return self._runner._store.get_task_by_id(id)
   
 
-  def delete_task_by_id(self, id: uuid4):
+  def delete_task_by_id(self, id: UUID):
     return self._runner._store.delete_task_by_id(id)
   

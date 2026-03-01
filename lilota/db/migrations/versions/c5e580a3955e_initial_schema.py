@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: 159f084d06a3
+Revision ID: c5e580a3955e
 Revises: 
-Create Date: 2026-02-24 23:08:48.991475
+Create Date: 2026-02-28 23:59:07.439124
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '159f084d06a3'
+revision: str = 'c5e580a3955e'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -64,7 +64,7 @@ def upgrade() -> None:
     sa.Column('end_date_time', sa.DateTime(), nullable=True),
     sa.Column('input', sa.JSON(), nullable=True),
     sa.Column('output', sa.JSON(), nullable=True),
-    sa.Column('exception', sa.JSON(), nullable=True),
+    sa.Column('error', sa.JSON(), nullable=True),
     sa.Column('locked_by', sa.Uuid(), nullable=True),
     sa.Column('locked_at', sa.DateTime(), nullable=True),
     sa.CheckConstraint("status IN ('created', 'scheduled', 'running', 'completed', 'failed', 'cancelled')", name='lilota_task_status_check'),

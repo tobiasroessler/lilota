@@ -6,8 +6,8 @@ from sqlalchemy import create_engine, select, update
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
 from typing import Any
-from lilota.utils import exception_to_dict, normalize_data
-from uuid import uuid4
+from lilota.utils import normalize_data
+from uuid import UUID
 import logging
 
 
@@ -41,7 +41,7 @@ class SqlAlchemyNodeStore(StoreBase):
     super().__init__(db_url, logger)
 
 
-  def create_node(self, type: NodeType, status: NodeStatus = NodeStatus.STARTING) -> uuid4:
+  def create_node(self, type: NodeType, status: NodeStatus = NodeStatus.STARTING) -> UUID:
     node = Node(
       type=type,
       status=status
@@ -59,7 +59,7 @@ class SqlAlchemyNodeStore(StoreBase):
       return session.query(Node).all()
       
 
-  def get_node_by_id(self, id: uuid4):
+  def get_node_by_id(self, id: UUID):
     with self._get_session() as session:
       node = session.get(Node, id)
       if node is None:
@@ -67,7 +67,7 @@ class SqlAlchemyNodeStore(StoreBase):
       return node
   
 
-  def update_node_status(self, id: uuid4, status: NodeStatus):
+  def update_node_status(self, id: UUID, status: NodeStatus):
     with self._get_session() as session:
       with session.begin():
         stmt = (
@@ -76,7 +76,7 @@ class SqlAlchemyNodeStore(StoreBase):
         session.execute(stmt)
 
 
-  def update_nodes_status_on_dead_nodes(self, cutoff: datetime, exclude_node_id: uuid4):
+  def update_nodes_status_on_dead_nodes(self, cutoff: datetime, exclude_node_id: UUID):
     with self._get_session() as session:
       with session.begin():
         result = session.execute(
@@ -89,7 +89,7 @@ class SqlAlchemyNodeStore(StoreBase):
         return result.rowcount
 
 
-  def update_node_last_seen_at(self, id: uuid4):
+  def update_node_last_seen_at(self, id: UUID):
     with self._get_session() as session:
       with session.begin():
         session.execute(
@@ -139,7 +139,7 @@ class SqlAlchemyTaskStore(StoreBase):
       )
 
 
-  def get_task_by_id(self, id: uuid4) -> Task:
+  def get_task_by_id(self, id: UUID) -> Task:
     with self._get_session() as session:
       task = session.get(Task, id)
       if task is None:
@@ -147,7 +147,7 @@ class SqlAlchemyTaskStore(StoreBase):
       return task
     
 
-  def get_next_task(self, worker_id: uuid4) -> Task:
+  def get_next_task(self, worker_id: UUID) -> Task:
     with self._get_session() as session:
       with session.begin():
         task_id = session.execute(
@@ -178,7 +178,7 @@ class SqlAlchemyTaskStore(StoreBase):
       return session.get(Task, task_id)
 
 
-  def start_task(self, id: uuid4) -> Task:
+  def start_task(self, id: UUID) -> Task:
     with self._get_session() as session:
       with session.begin():
         task = self._load_task(session, id)
@@ -190,14 +190,14 @@ class SqlAlchemyTaskStore(StoreBase):
         return task
 
 
-  def set_progress(self, id: uuid4, progress: int):
+  def set_progress(self, id: UUID, progress: int):
     with self._get_session() as session:
       with session.begin():
         task = self._load_task(session, id)
         task.progress_percentage = max(0, min(progress, 100))
 
 
-  def end_task_success(self, id: uuid4, output: Any):
+  def end_task_success(self, id: UUID, output: Any):
     if not output is None:
       output = normalize_data(output)
 
@@ -208,15 +208,15 @@ class SqlAlchemyTaskStore(StoreBase):
         self._complete_progress(task, TaskStatus.COMPLETED)
 
 
-  def end_task_failure(self, id: uuid4, ex: Exception):
+  def end_task_failure(self, id: UUID, error: dict):
     with self._get_session() as session:
       with session.begin():
         task = self._load_task(session, id)
-        task.exception = exception_to_dict(ex)
+        task.error = error
         self._complete_progress(task, TaskStatus.FAILED)
 
 
-  def delete_task_by_id(self, id: uuid4):
+  def delete_task_by_id(self, id: UUID):
     with self._get_session() as session:
       with session.begin():
         task = session.get(Task, id)
@@ -233,7 +233,7 @@ class SqlAlchemyTaskStore(StoreBase):
     task.end_date_time = datetime.now(timezone.utc)
 
 
-  def _load_task(self, session, id: uuid4) -> Task:
+  def _load_task(self, session, id: UUID) -> Task:
     task: Task = session.get(Task, id)
     if task is None:
       raise ValueError(f"Task {id} not found")
@@ -263,7 +263,7 @@ class SqlAlchemyLogStore():
     return self._Session()
   
 
-  def get_log_entries_by_node_id(self, node_id: uuid4) -> list[LogEntry]:
+  def get_log_entries_by_node_id(self, node_id: UUID) -> list[LogEntry]:
     with self.get_session() as session:
       return (
         session.query(LogEntry)
@@ -302,7 +302,7 @@ class SqlAlchemyNodeLeaderStore(StoreBase):
 
       if result.rowcount == 1:
         session.commit()
-        self._logger.debug("Leadership acquired (takeover)")
+        self._logger.debug(f"Leadership acquired (new node id: {node_id})")
         return True
 
       # Check if row exists
@@ -323,7 +323,7 @@ class SqlAlchemyNodeLeaderStore(StoreBase):
         )
       )
       session.commit()
-      self._logger.debug("Leadership acquired (first leader)")
+      self._logger.debug(f"Leadership acquired first time (node id: {node_id})")
       return True
     except IntegrityError:
         # Someone else won the race to insert
@@ -347,12 +347,16 @@ class SqlAlchemyNodeLeaderStore(StoreBase):
         .where(
           NodeLeader.id == 1,
           NodeLeader.node_id == node_id,
+          NodeLeader.lease_expires_at >= now
         )
         .values(lease_expires_at=new_expiry)
       )
 
       session.commit()
-      return result.rowcount == 1
+      renewed = result.rowcount == 1
+      if renewed:
+        self._logger.debug(f"Leadership renewed (node id: {node_id})")
+      return renewed
     
 
   def delete_leader_by_id(self, id: int):

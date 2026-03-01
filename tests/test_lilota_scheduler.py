@@ -57,15 +57,13 @@ class LilotaSchedulerTestCase(TestCase):
     except Exception as ex:
       raise Exception(f"Could not update the database: {str(ex)}")
     
+
+  def setUp(self):
     # Create SqlAlchemy engine and session
     with LilotaSchedulerTestCase.get_session() as session:
       session.query(Task).delete()
       session.query(Node).delete()
       session.commit()
-
-
-  def setUp(self):
-    pass
 
 
   def test_start___should_create_node(self):
@@ -89,7 +87,7 @@ class LilotaSchedulerTestCase(TestCase):
 
   def test_start___with_heartbeat___should_start_the_heartbeat(self):
     # Arrange
-    lilota = LilotaScheduler(LilotaSchedulerTestCase.DB_URL, heartbeat_interval=1.0)
+    lilota = LilotaScheduler(LilotaSchedulerTestCase.DB_URL, node_heartbeat_interval=1.0)
     lilota.start()
 
     try:
@@ -113,7 +111,7 @@ class LilotaSchedulerTestCase(TestCase):
 
   def test_stop___with_heartbeat___should_stop_the_heartbeat(self):
     # Arrange
-    lilota = LilotaScheduler(LilotaSchedulerTestCase.DB_URL, heartbeat_interval=1.0)
+    lilota = LilotaScheduler(LilotaSchedulerTestCase.DB_URL, node_heartbeat_interval=1.0)
     lilota.start()
 
     try:
@@ -148,7 +146,7 @@ class LilotaSchedulerTestCase(TestCase):
       task: Task = lilota.get_task_by_id(task_id)
       self.assertEqual(task.name, "add")
       self.assertEqual(task.status, TaskStatus.CREATED)
-      self.assertIsNone(task.exception)
+      self.assertIsNone(task.error)
       self.assertEqual(task.progress_percentage, 0)
       self.assertEqual(task.input['a'], 2)
       self.assertEqual(task.input['b'], 3)
@@ -174,7 +172,7 @@ class LilotaSchedulerTestCase(TestCase):
       lilota.stop()
 
     log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(node.id)
-    self.assertEqual(log_entries[0].message, "Scheduler started")
+    self.assertEqual(log_entries[0].message, "Node started")
     self.assertEqual(log_entries[1].message, "Node stopped")
 
 
@@ -196,9 +194,9 @@ class LilotaSchedulerTestCase(TestCase):
 
     log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(node.id)
     self.assertEqual(len(log_entries), 4)
-    self.assertEqual(log_entries[0].message, "Scheduler started")
+    self.assertEqual(log_entries[0].message, "Node started")
     self.assertEqual(log_entries[1].message, "Node stopped")
-    self.assertEqual(log_entries[2].message, "Scheduler started")
+    self.assertEqual(log_entries[2].message, "Node started")
     self.assertEqual(log_entries[3].message, "Node stopped")
 
 
@@ -222,12 +220,12 @@ class LilotaSchedulerTestCase(TestCase):
 
     log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(node1.id)
     self.assertEqual(len(log_entries), 2)
-    self.assertEqual(log_entries[0].message, "Scheduler started")
+    self.assertEqual(log_entries[0].message, "Node started")
     self.assertEqual(log_entries[1].message, "Node stopped")
 
     log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(node2.id)
     self.assertEqual(len(log_entries), 2)
-    self.assertEqual(log_entries[0].message, "Scheduler started")
+    self.assertEqual(log_entries[0].message, "Node started")
     self.assertEqual(log_entries[1].message, "Node stopped")
 
 

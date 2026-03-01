@@ -4,7 +4,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from alembic import command
 from dataclasses import dataclass
 from unittest import TestCase, main
-from multiprocessing import cpu_count
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from lilota.worker import LilotaWorker
@@ -58,6 +57,8 @@ class LilotaWorkerTestCase(TestCase):
     except Exception as ex:
       raise Exception(f"Could not update the database: {str(ex)}")
     
+
+  def setUp(self):
     # Create SqlAlchemy engine and session
     with LilotaWorkerTestCase.get_session() as session:
       # Delete all tasks and nodes
@@ -68,32 +69,28 @@ class LilotaWorkerTestCase(TestCase):
       session.commit()
 
 
-  def setUp(self):
-    pass
-
-
   def test_register___nothing_is_registered___should_not_have_any_registration(self):
     # Arrange & Act
-    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL, number_of_processes=1)
+    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL, run_in_thread=True)
 
     # Assert
-    self.assertEqual(len(lilota._runner._registrations), 0)
+    self.assertEqual(len(lilota._registry), 0)
 
 
   def test_register___one_class_is_registered___should_have_one_registration(self):
     # Arrange
-    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL, number_of_processes=1)
+    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL, run_in_thread=True)
 
     # Act
     lilota._register("add_task", AddInput)
 
     # Assert
-    self.assertEqual(len(lilota._runner._registrations), 1)
+    self.assertEqual(len(lilota._registry), 1)
 
 
   def test_register___task_is_already_registered___should_raise_exception(self):
     # Arrange
-    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL, number_of_processes=1)
+    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL, run_in_thread=True)
     lilota._register("add_task", AddInput)
 
     # Act & Assert
@@ -103,54 +100,9 @@ class LilotaWorkerTestCase(TestCase):
       self.assertEqual(str(err), "Task 'add_task' is already registered")
 
 
-  def test_start___number_of_processes_is_not_set___should_use_cpu_count(self):
-    # Arrange
-    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL)
-    lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
-
-    # Act
-    lilota.start()
-
-    # Assert
-    try:
-      self.assertEqual(lilota._runner._number_of_processes, cpu_count())
-    finally:
-      lilota.stop()
-
-
-  def test_start___number_of_processes_is_set_to_one___should_use_one(self):
-    # Arrange
-    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL, number_of_processes=1)
-    lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
-
-    # Act
-    lilota.start()
-
-    # Assert
-    try:
-      self.assertEqual(lilota._runner._number_of_processes, 1)
-    finally:
-      lilota.stop()
-
-
-  def test_start___number_of_processes_is_greater_than_cpu_count___should_use_cpu_count(self):
-    # Arrange
-    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL, number_of_processes=1000)
-    lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
-
-    # Act
-    lilota.start()
-
-    # Assert
-    try:
-      self.assertEqual(lilota._runner._number_of_processes, cpu_count())
-    finally:
-      lilota.stop()
-
-
   def test_start___but_started_twice___should_raise_exception(self):
     # Arrange
-    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL, number_of_processes=1)
+    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL, run_in_thread=True)
     lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
     lilota.start()
 
@@ -165,7 +117,7 @@ class LilotaWorkerTestCase(TestCase):
 
   def test_start___should_create_node(self):
     # Act
-    worker = LilotaWorker(LilotaWorkerTestCase.DB_URL)
+    worker = LilotaWorker(LilotaWorkerTestCase.DB_URL, run_in_thread=True)
     worker.start()
 
     # Assert
@@ -182,7 +134,7 @@ class LilotaWorkerTestCase(TestCase):
 
   def test_start___with_heartbeat___should_start_the_heartbeat(self):
     # Arrange
-    worker = LilotaWorker(LilotaWorkerTestCase.DB_URL, heartbeat_interval=1.0)
+    worker = LilotaWorker(LilotaWorkerTestCase.DB_URL, run_in_thread=True, node_heartbeat_interval=1.0)
     worker.start()
 
     try:
@@ -206,7 +158,7 @@ class LilotaWorkerTestCase(TestCase):
 
   def test_stop___but_start_was_not_executed___should_raise_exception(self):
     # Arrange
-    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL, number_of_processes=1)
+    lilota = LilotaWorker(LilotaWorkerTestCase.DB_URL, run_in_thread=True)
     lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
 
     # Act & Assert
@@ -217,7 +169,7 @@ class LilotaWorkerTestCase(TestCase):
 
   def test_stop___with_heartbeat___should_stop_the_heartbeat(self):
     # Arrange
-    worker = LilotaWorker(LilotaWorkerTestCase.DB_URL, heartbeat_interval=1.0)
+    worker = LilotaWorker(LilotaWorkerTestCase.DB_URL, run_in_thread=True, node_heartbeat_interval=1.0)
     worker.start()
 
     try:
@@ -241,7 +193,7 @@ class LilotaWorkerTestCase(TestCase):
 
   def test_logging___when_starting_scheduler___should_log_correctly(self):
     # Arrange
-    worker = LilotaWorker(LilotaWorkerTestCase.DB_URL, logging_level=logging.DEBUG)
+    worker = LilotaWorker(LilotaWorkerTestCase.DB_URL, run_in_thread=True, logging_level=logging.DEBUG)
     log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaWorkerTestCase.DB_URL)
 
     # Act
@@ -254,16 +206,15 @@ class LilotaWorkerTestCase(TestCase):
       worker.stop()
 
     log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(node.id)
-    self.assertEqual(f"Taskrunner started ({cpu_count()} process(es) used)", log_entries[0].message)
-    self.assertEqual("Worker started", log_entries[1].message)
-    self.assertTrue(any(entry.message == "Taskrunner stopped" for entry in log_entries))
-    self.assertTrue(any(entry.message == "Node stopped" for entry in log_entries))
+    self.assertEqual("Node started", log_entries[0].message)
+    self.assertEqual(f"Leadership acquired first time (node id: {node.id})", log_entries[1].message)
+    self.assertEqual("Node stopped", log_entries[2].message)
 
 
   def test_logging___when_starting_scheduler_twice___should_log_correctly(self):
     # Arrange
-    worker1 = LilotaWorker(LilotaWorkerTestCase.DB_URL, logging_level=logging.DEBUG)
-    worker2 = LilotaWorker(LilotaWorkerTestCase.DB_URL, logging_level=logging.DEBUG)
+    worker1 = LilotaWorker(LilotaWorkerTestCase.DB_URL, run_in_thread=True, logging_level=logging.DEBUG)
+    worker2 = LilotaWorker(LilotaWorkerTestCase.DB_URL, run_in_thread=True, logging_level=logging.DEBUG)
     log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaWorkerTestCase.DB_URL)
 
     # Act
@@ -279,16 +230,13 @@ class LilotaWorkerTestCase(TestCase):
       worker2.stop()
 
     log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(node1.id)
-    self.assertEqual(f"Taskrunner started ({cpu_count()} process(es) used)", log_entries[0].message)
-    self.assertEqual("Worker started", log_entries[1].message)
-    self.assertTrue(any(entry.message == "Taskrunner stopped" for entry in log_entries))
-    self.assertTrue(any(entry.message == "Node stopped" for entry in log_entries))
+    self.assertEqual("Node started", log_entries[0].message)
+    self.assertEqual(f"Leadership acquired first time (node id: {node1.id})", log_entries[1].message)
+    self.assertEqual("Node stopped", log_entries[2].message)
 
     log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(node2.id)
-    self.assertEqual(f"Taskrunner started ({cpu_count()} process(es) used)", log_entries[0].message)
-    self.assertEqual("Worker started", log_entries[1].message)
-    self.assertTrue(any(entry.message == "Taskrunner stopped" for entry in log_entries))
-    self.assertTrue(any(entry.message == "Node stopped" for entry in log_entries))
+    self.assertEqual("Node started", log_entries[0].message)
+    self.assertEqual("Node stopped", log_entries[1].message)
 
 
   def test_leadership___with_one_worker___should_set_this_worker_as_leader(self):
@@ -299,7 +247,8 @@ class LilotaWorkerTestCase(TestCase):
       session.query(NodeLeader).delete()
       worker = LilotaWorker(
         LilotaWorkerTestCase.DB_URL, 
-        heartbeat_interval=1.0, 
+        run_in_thread=True,
+        node_heartbeat_interval=1.0, 
         node_timeout_sec=20,
         logging_level=logging.DEBUG
       )
@@ -320,8 +269,9 @@ class LilotaWorkerTestCase(TestCase):
 
     node_id = worker.get_node().id
     log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(node_id)
-    self.assertTrue(any(entry.message == "Leadership acquired (first leader)" and entry.node_id == node_id for entry in log_entries))
-    self.assertFalse(any(entry.message == "Leadership acquired (lease takeover)" and entry.node_id == node_id for entry in log_entries))
+    self.assertEqual(len(log_entries), 2)
+    self.assertEqual("Node started", log_entries[0].message)
+    self.assertEqual(f"Leadership acquired first time (node id: {node_id})", log_entries[1].message)
     worker.stop()
 
 
@@ -334,7 +284,8 @@ class LilotaWorkerTestCase(TestCase):
       session.query(Node).delete()
       worker1 = LilotaWorker(
         LilotaWorkerTestCase.DB_URL, 
-        heartbeat_interval=1.0, 
+        run_in_thread=True,
+        node_heartbeat_interval=1.0, 
         node_timeout_sec=2,
         logging_level=logging.DEBUG
       )
@@ -354,7 +305,8 @@ class LilotaWorkerTestCase(TestCase):
     # Act
     worker2 = LilotaWorker(
       LilotaWorkerTestCase.DB_URL, 
-      heartbeat_interval=1.0, 
+      run_in_thread=True,
+      node_heartbeat_interval=1.0, 
       node_timeout_sec=2,
       logging_level=logging.DEBUG
     )
@@ -370,14 +322,17 @@ class LilotaWorkerTestCase(TestCase):
 
     worker1_id = worker1.get_node().id
     log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(worker1_id)
-    self.assertTrue(any(entry.message == "Leadership acquired (first leader)" for entry in log_entries))
+    self.assertEqual(len(log_entries), 2)
+    self.assertEqual("Node started", log_entries[0].message)
+    self.assertEqual(f"Leadership acquired first time (node id: {worker1_id})", log_entries[1].message)
     self.assertFalse(any(entry.message == "Leadership acquired (takeover)" for entry in log_entries))
     
     worker2_id = worker2.get_node().id
     log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(worker2_id)
-    self.assertFalse(any(entry.message == "Leadership acquired (first leader)" for entry in log_entries))
-    self.assertTrue(any(entry.message == "Leadership acquired (takeover)" for entry in log_entries))
-    self.assertTrue(any(entry.message == "Marked 1 stale node(s) as DEAD" for entry in log_entries))
+    self.assertEqual(len(log_entries), 3)
+    self.assertEqual("Node started", log_entries[0].message)
+    self.assertEqual(f"Leadership acquired (new node id: {worker2_id})", log_entries[1].message)
+    self.assertEqual("Marked 1 stale node(s) as DEAD", log_entries[2].message)
     worker1.stop()
     worker2.stop()
 
@@ -393,11 +348,11 @@ class LilotaWorkerTestCase(TestCase):
       self.assertIsNone(node_leader)
       session.commit()
 
-    worker1 = LilotaWorker(LilotaWorkerTestCase.DB_URL, heartbeat_interval=1.0, node_timeout_sec=2)
+    worker1 = LilotaWorker(LilotaWorkerTestCase.DB_URL, run_in_thread=True, node_heartbeat_interval=1.0, node_timeout_sec=2)
     worker1.start()
     time.sleep(2)
 
-    worker2 = LilotaWorker(LilotaWorkerTestCase.DB_URL, heartbeat_interval=1.0, node_timeout_sec=2)
+    worker2 = LilotaWorker(LilotaWorkerTestCase.DB_URL, run_in_thread=True, node_heartbeat_interval=1.0, node_timeout_sec=2)
     worker2.start()
     time.sleep(2)
 

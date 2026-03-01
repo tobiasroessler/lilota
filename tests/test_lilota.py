@@ -5,7 +5,6 @@ from alembic import command
 from dataclasses import dataclass
 from unittest import TestCase, main
 from typing import Any
-from multiprocessing import cpu_count
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from lilota.node import Lilota
@@ -151,7 +150,6 @@ class LilotaTestCase(TestCase):
     lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
     lilota.start()
     self.assertTrue(lilota._runner._is_started)
-    self.assertEqual(len(lilota._runner._processes), cpu_count())
     self.assertIsNotNone(lilota._runner._logging_queue)
     self.assertIsNotNone(lilota._runner._store)
 
