@@ -137,6 +137,21 @@ class SqlAlchemyTaskStore(StoreBase):
           .order_by(Task.id)
           .all()
       )
+    
+
+  def has_unfinished_tasks(self) -> bool:
+    with self._get_session() as session:
+      return session.query(
+        session.query(Task)
+        .filter(
+          Task.status.in_([
+            TaskStatus.CREATED,
+            TaskStatus.SCHEDULED,
+            TaskStatus.RUNNING
+          ])
+        )
+        .exists()
+      ).scalar()
 
 
   def get_task_by_id(self, id: UUID) -> Task:

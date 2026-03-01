@@ -7,7 +7,7 @@ from unittest import TestCase, main
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from lilota.scheduler import LilotaScheduler
-from lilota.models import Node, NodeType, NodeStatus, Task, TaskStatus, LogEntry
+from lilota.models import Node, NodeLeader, NodeType, NodeStatus, Task, TaskStatus, LogEntry
 from lilota.db.alembic import get_alembic_config
 from lilota.stores import SqlAlchemyLogStore
 import logging
@@ -63,6 +63,8 @@ class LilotaSchedulerTestCase(TestCase):
     with LilotaSchedulerTestCase.get_session() as session:
       session.query(Task).delete()
       session.query(Node).delete()
+      session.query(LogEntry).delete()
+      session.query(NodeLeader).delete()
       session.commit()
 
 
@@ -172,6 +174,7 @@ class LilotaSchedulerTestCase(TestCase):
       lilota.stop()
 
     log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(node.id)
+    self.assertEqual(len(log_entries), 2)
     self.assertEqual(log_entries[0].message, "Node started")
     self.assertEqual(log_entries[1].message, "Node stopped")
 

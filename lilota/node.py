@@ -4,7 +4,7 @@ from lilota.models import NodeType, NodeStatus, TaskProgress, RegisteredTask
 from lilota.stores import SqlAlchemyNodeStore, SqlAlchemyTaskStore
 from lilota.heartbeat import Heartbeat, HeartbeatTask
 from lilota.db.alembic import upgrade_db
-from lilota.logging import configure_logging, create_context_logger, LoggingRuntime
+from lilota.logging import configure_logging, create_context_logger
 import logging
 from uuid import UUID
 
@@ -57,8 +57,6 @@ class LilotaNode(ABC):
     upgrade_db(self._db_url)
 
     # Setup logging
-    # self._logging_runtime = LoggingRuntime(db_url, logging_level)
-    # self._runtime = self._logging_runtime
     self._logger = configure_logging(self._db_url, logging_level)
 
 
@@ -70,7 +68,7 @@ class LilotaNode(ABC):
     if not self._node_id:
       # Create stores
       self._node_store = SqlAlchemyNodeStore(self._db_url, self._logger)
-      self._task_store = SqlAlchemyTaskStore(self._db_url, self._logger)
+      self._task_store = SqlAlchemyTaskStore(self._db_url, self._logger, self._should_set_progress_manually())
 
       # Create node with status STARTING
       self._node_id = self._node_store.create_node(self._node_type, NodeStatus.STARTING)
@@ -148,6 +146,11 @@ class LilotaNode(ABC):
 
   @abstractmethod
   def _on_stop(self):
+    pass
+
+
+  @abstractmethod
+  def _should_set_progress_manually(self) -> bool:
     pass
 
 

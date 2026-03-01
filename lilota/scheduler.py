@@ -42,6 +42,10 @@ class LilotaScheduler(LilotaNode):
     self._stop_node_heartbeat()
 
 
+  def _should_set_progress_manually(self):
+    return False
+
+
   def schedule(self, name: str, input: Any = None) -> int:
     # Save the task infos in the store
     self._logger.debug(f"Create task (name: '{name}', input: {input})")

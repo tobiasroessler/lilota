@@ -73,7 +73,7 @@ class LilotaWorker(LilotaNode):
     node_timeout_sec: int = 20,
     task_heartbeat_interval: float = 0.1,
     max_task_heartbeat_interval: float = 5.0,
-    set_progress_manually=False,
+    set_progress_manually: bool = False,
     logging_level=logging.INFO,
     **kwargs):
 
@@ -87,12 +87,12 @@ class LilotaWorker(LilotaNode):
       **kwargs,
     )
 
-    self._run_in_thread = run_in_thread
+    self._run_in_thread: bool = run_in_thread
     self._thread: Thread = None
-    self._task_heartbeat_interval = task_heartbeat_interval
-    self._max_task_heartbeat_interval = max_task_heartbeat_interval
-    self._set_progress_manually = set_progress_manually
-    self._stop_event = Event()
+    self._task_heartbeat_interval: float = task_heartbeat_interval
+    self._max_task_heartbeat_interval: float = max_task_heartbeat_interval
+    self._set_progress_manually: bool = set_progress_manually
+    self._stop_event: Event = Event()
     self._registry: dict[str, RegisteredTask] = {}
 
 
@@ -111,7 +111,7 @@ class LilotaWorker(LilotaNode):
     if name in self._registry:
       raise RuntimeError(f"Task {name!r} is already registered")
     
-    if task_progress is not None and not isinstance(task_progress, TaskProgress):
+    if task_progress is not None and not isinstance(task_progress, type(TaskProgress)):
       raise TypeError("task_progress must be of type TaskProgress")
 
     # Register the task
@@ -231,3 +231,11 @@ class LilotaWorker(LilotaNode):
 
     # Stop worker heartbeat thread
     self._stop_node_heartbeat()
+
+
+  def _should_set_progress_manually(self):
+    return self._set_progress_manually
+  
+
+  def has_unfinished_tasks(self):
+    return self._task_store.has_unfinished_tasks()

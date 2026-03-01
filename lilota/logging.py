@@ -50,38 +50,16 @@ class LilotaLoggingFilter(logging.Filter):
     return True
   
 
-class LoggingRuntime:
-
-  _instance: Optional["LoggingRuntime"] = None
-
-  def __new__(cls, db_url: str, logging_level: int):
-    if cls._instance is None:
-      cls._instance = super().__new__(cls)
-      cls._instance._initialized = False
-    return cls._instance
-
-
-  def __init__(self, db_url: str, logging_level: int):
-    if self._initialized:
-      return
-
-    self.db_handler = SqlAlchemyHandler(SqlAlchemyLogStore(db_url))
-    self.db_handler.setLevel(logging_level)
-    self.db_handler.setFormatter(logging.Formatter("%(message)s"))
-    self.db_handler.addFilter(LilotaLoggingFilter())
-    self._initialized = True
-
-
 
 def configure_logging(db_url: str, logging_level: int) -> logging.Logger:
   logger = logging.getLogger(f"{LILOTA_LOGGER_NAME}")
   logger.setLevel(logging_level)
-  if not any(isinstance(h, SqlAlchemyHandler) for h in logger.handlers):
-    db_handler = SqlAlchemyHandler(SqlAlchemyLogStore(db_url))
-    db_handler.setLevel(logging_level)
-    db_handler.setFormatter(logging.Formatter("%(message)s"))
-    db_handler.addFilter(LilotaLoggingFilter())
-    logger.addHandler(db_handler)
+  logger.handlers.clear()
+  db_handler = SqlAlchemyHandler(SqlAlchemyLogStore(db_url))
+  db_handler.setLevel(logging_level)
+  db_handler.setFormatter(logging.Formatter("%(message)s"))
+  db_handler.addFilter(LilotaLoggingFilter())
+  logger.addHandler(db_handler)
   return logger
 
 

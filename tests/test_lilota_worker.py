@@ -206,6 +206,7 @@ class LilotaWorkerTestCase(TestCase):
       worker.stop()
 
     log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(node.id)
+    self.assertEqual(len(log_entries), 3)
     self.assertEqual("Node started", log_entries[0].message)
     self.assertEqual(f"Leadership acquired first time (node id: {node.id})", log_entries[1].message)
     self.assertEqual("Node stopped", log_entries[2].message)
@@ -230,11 +231,13 @@ class LilotaWorkerTestCase(TestCase):
       worker2.stop()
 
     log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(node1.id)
+    self.assertEqual(len(log_entries), 3)
     self.assertEqual("Node started", log_entries[0].message)
     self.assertEqual(f"Leadership acquired first time (node id: {node1.id})", log_entries[1].message)
     self.assertEqual("Node stopped", log_entries[2].message)
 
     log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(node2.id)
+    self.assertEqual(len(log_entries), 2)
     self.assertEqual("Node started", log_entries[0].message)
     self.assertEqual("Node stopped", log_entries[1].message)
 
