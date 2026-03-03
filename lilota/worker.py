@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Type, Optional, Any
 from lilota.node import LilotaNode, NodeHeartbeatTask
-from lilota.models import NodeType, TaskProgress, RegisteredTask
+from lilota.models import Task, NodeType, TaskProgress, RegisteredTask
 from lilota.logging import create_context_logger
 from lilota.stores import SqlAlchemyNodeStore, SqlAlchemyNodeLeaderStore
 from lilota.heartbeat import Heartbeat

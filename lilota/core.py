@@ -17,7 +17,7 @@ class Lilota():
       logging_level=logging_level
     )
     self._worker = LilotaWorker(
-      db_url = db_url,
+      db_url=db_url,
       run_in_thread=True,
       node_heartbeat_interval=node_heartbeat_interval,
       node_timeout_sec=node_timeout_sec,
@@ -27,6 +27,44 @@ class Lilota():
       logging_level=logging_level
     )
     self._is_started = False
+
+
+  def _register(
+    self,
+    name: str,
+    func: Callable,
+    *,
+    input_model: Optional[Type[Any]] = None,
+    output_model: Optional[Type[Any]] = None,
+    task_progress: Optional[TaskProgress] = None
+  ):
+    self._worker._register(
+      name=name,
+      func=func,
+      input_model=input_model,
+      output_model=output_model,
+      task_progress=task_progress
+    )
+
+
+  def register(
+    self,
+    name: str,
+    *,
+    input_model=None,
+    output_model=None,
+    task_progress=None
+  ):
+    def decorator(func):
+      self._worker._register(
+        name=name,
+        func=func,
+        input_model=input_model,
+        output_model=output_model,
+        task_progress=task_progress
+      )
+      return func
+    return decorator
 
 
   def start(self):
@@ -48,20 +86,3 @@ class Lilota():
   def get_task_by_id(self, id: UUID):
     return self._scheduler._task_store.get_task_by_id(id)
   
-
-  def _register(
-    self,
-    name: str,
-    func: Callable,
-    *,
-    input_model: Optional[Type[Any]] = None,
-    output_model: Optional[Type[Any]] = None,
-    task_progress: Optional[TaskProgress] = None
-  ):
-    self._worker._register(
-      name=name, 
-      func=func, 
-      input_model=input_model, 
-      output_model=output_model, 
-      task_progress=task_progress
-    )

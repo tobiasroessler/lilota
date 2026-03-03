@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Type, Optional, Dict, Any
-from lilota.models import NodeType, NodeStatus, TaskProgress, RegisteredTask
+from lilota.models import NodeType, NodeStatus
 from lilota.stores import SqlAlchemyNodeStore, SqlAlchemyTaskStore
 from lilota.heartbeat import Heartbeat, HeartbeatTask
 from lilota.db.alembic import upgrade_db
@@ -152,81 +151,3 @@ class LilotaNode(ABC):
   @abstractmethod
   def _should_set_progress_manually(self) -> bool:
     pass
-
-
-
-class Lilota:
-
-  def __init__(self, db_url: str, set_progress_manually: bool = False):
-    self._registry: Dict[str, RegisteredTask] = {}
-
-    # Upgrade the database
-    upgrade_db(db_url)
-
-
-  def _register(
-    self,
-    name: str,
-    func: Callable,
-    *,
-    input_model: Optional[Type[Any]] = None,
-    output_model: Optional[Type[Any]] = None,
-    task_progress: Optional[TaskProgress] = None
-  ):
-    if name in self._registry:
-      raise RuntimeError(f"Task {name!r} is already registered")
-    
-    if not task_progress is None and not isinstance(task_progress, type(TaskProgress)):
-      raise TypeError("task_progress must be of type TaskProgress")
-
-    # Register the task
-    task = RegisteredTask(
-      func=func,
-      input_model=input_model,
-      output_model=output_model,
-      task_progress=task_progress
-    )
-
-    self._runner.register(name, task)
-    self._registry[name] = task
-
-
-  def register(
-    self,
-    name: str,
-    *,
-    input_model=None,
-    output_model=None,
-    task_progress=None
-  ):
-    def decorator(func):
-      self._register(
-        name=name,
-        func=func,
-        input_model=input_model,
-        output_model=output_model,
-        task_progress=task_progress
-      )
-      return func
-    return decorator
-  
-
-  def start(self):
-    self._runner.start()
-
-
-  def schedule(self, name: str, input_model: Any = None) -> int:
-    return self._runner.add(name, input_model)
-
-
-  def stop(self):
-    self._runner.stop()
-  
-
-  def get_task_by_id(self, id: UUID):
-    return self._runner._store.get_task_by_id(id)
-  
-
-  def delete_task_by_id(self, id: UUID):
-    return self._runner._store.delete_task_by_id(id)
-  
