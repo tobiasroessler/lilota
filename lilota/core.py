@@ -8,7 +8,7 @@ from uuid import UUID
 
 class Lilota():
 
-  def __init__(self, db_url: str, node_heartbeat_interval: float = 5, node_timeout_sec: int = 20, logging_level = logging.INFO, task_heartbeat_interval: float = 0.1, max_task_heartbeat_interval: float = 5.0, set_progress_manually: bool = False):
+  def __init__(self, db_url: str, node_heartbeat_interval: float = 5, node_timeout_sec: int = 20, logging_level = logging.DEBUG, task_heartbeat_interval: float = 0.1, max_task_heartbeat_interval: float = 5.0, set_progress_manually: bool = False):
     self._db_url = db_url
     self._scheduler = LilotaScheduler(
       db_url=db_url,

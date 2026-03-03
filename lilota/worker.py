@@ -166,6 +166,7 @@ class LilotaWorker(LilotaNode):
 
     # Execute tasks
     if self._run_in_thread:
+      self._stop_event.clear()
       self._thread = Thread(target=self._execute_tasks, daemon=True)
       self._thread.start()
     else:
@@ -228,6 +229,7 @@ class LilotaWorker(LilotaNode):
     # Stop the worker thread
     if self._thread is not None:
       self._thread.join()
+      self._thread = None
 
     # Stop worker heartbeat thread
     self._stop_node_heartbeat()
