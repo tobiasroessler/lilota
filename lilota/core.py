@@ -106,21 +106,47 @@ class Lilota():
 
 
   def start(self):
+    """Start the scheduler and worker.
+
+    Initializes both the scheduler and worker components and updates
+    the internal started state.
+    """
     self._scheduler.start()
     self._worker.start()
     self._is_started = self._scheduler._is_started and self._worker._is_started
 
 
   def stop(self):
+    """Stop the scheduler and worker.
+
+    Gracefully stops both components and updates the internal started state.
+    """
     self._scheduler.stop()
     self._worker.stop()
     self._is_started = self._scheduler._is_started and self._worker._is_started
 
 
   def schedule(self, name: str, input: Any = None) -> int:
+    """Schedule a task for execution.
+
+    Args:
+      name (str): Name of the registered task.
+      input (Any, optional): Input payload for the task. Defaults to None.
+
+    Returns:
+      int: Identifier of the scheduled task.
+    """
     return self._scheduler.schedule(name, input)
   
 
   def get_task_by_id(self, id: UUID):
-    return self._scheduler._task_store.get_task_by_id(id)
+    """Retrieve a task by its unique identifier.
+
+    Args:
+      id (UUID): Unique task identifier.
+
+    Returns:
+      Any: Task object associated with the given ID.
+    """
+    return self._scheduler.get_task_by_id(id)
   

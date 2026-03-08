@@ -12,8 +12,26 @@ from threading import Thread, Event
 
 
 class WorkerHeartbeatTask(NodeHeartbeatTask):
+  """Heartbeat task used by worker nodes.
+
+  In addition to updating the node heartbeat, this task also performs
+  leader election among workers. The elected leader periodically performs
+  maintenance tasks such as cleaning up stale nodes.
+  """
 
   def __init__(self, interval: float, node_id: str, node_timeout_sec: int, node_store: SqlAlchemyNodeStore, node_leader_store: SqlAlchemyNodeLeaderStore, logger: logging.Logger):
+    """Initialize the worker heartbeat task.
+
+    Args:
+      interval (float): Interval in seconds between heartbeats.
+      node_id (str): Unique identifier of the worker node.
+      node_timeout_sec (int): Timeout in seconds after which nodes are
+        considered dead.
+      node_store (SqlAlchemyNodeStore): Store used for node operations.
+      node_leader_store (SqlAlchemyNodeLeaderStore): Store used for leader
+        election and leadership renewal.
+      logger (logging.Logger): Logger instance.
+    """
     super().__init__(interval, node_id, node_store, logger)
     self._node_timeout_sec = node_timeout_sec
     self._node_leader_store = node_leader_store
@@ -21,6 +39,12 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
     
 
   def execute(self):
+    """Execute the heartbeat logic.
+
+    Updates the node's last-seen timestamp and attempts to perform leader
+    election. If the node becomes leader, it will also trigger cleanup tasks.
+    """
+
     # Update last_seen_at
     super().execute()
 
@@ -62,6 +86,13 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
 
 
 class LilotaWorker(LilotaNode):
+  """Worker node responsible for executing scheduled tasks.
+
+  Workers poll the task store for pending tasks, execute registered
+  functions, and update task status and progress. Each worker also
+  sends periodic heartbeats and participates in leader election
+  for cluster maintenance.
+  """
 
   LOGGER_NAME = "lilota.worker"
 
@@ -76,6 +107,25 @@ class LilotaWorker(LilotaNode):
     set_progress_manually: bool = False,
     logging_level=logging.INFO,
     **kwargs):
+    """Initialize a worker node.
+
+    Args:
+      db_url (str): Database connection URL.
+      run_in_thread (bool): Whether task execution should run in a background
+        thread.
+      node_heartbeat_interval (float, optional): Interval in seconds between
+        node heartbeats. Defaults to 5.0.
+      node_timeout_sec (int, optional): Time in seconds before a node is
+        considered inactive. Defaults to 20.
+      task_heartbeat_interval (float, optional): Initial interval in seconds
+        between polling attempts for tasks. Defaults to 0.1.
+      max_task_heartbeat_interval (float, optional): Maximum polling interval
+        when no tasks are available. Defaults to 5.0.
+      set_progress_manually (bool, optional): User is responsible for setting
+      the task progress. Defaults to False.
+      logging_level (int, optional): Logging level used by the worker.
+      **kwargs: Additional keyword arguments passed to ``LilotaNode``.
+    """
 
     super().__init__(
       db_url=db_url,
@@ -133,6 +183,24 @@ class LilotaWorker(LilotaNode):
     output_model=None,
     task_progress=None
   ):
+    """Decorator for registering a task function.
+
+    This method allows task registration using decorator syntax.
+
+    Example:
+      @lilota.register("my_task")
+      def my_task(data):
+        return data
+
+    Args:
+      name (str): Unique name of the task.
+      input_model (Optional[Type[Any]]): Optional input validation model.
+      output_model (Optional[Type[Any]]): Optional output validation model.
+      task_progress (Optional[TaskProgress]): Task progress tracking strategy.
+
+    Returns:
+      Callable: A decorator that registers the function.
+    """
     def decorator(func):
       self._register(
         name=name,
@@ -240,4 +308,9 @@ class LilotaWorker(LilotaNode):
   
 
   def has_unfinished_tasks(self):
+    """Check whether there are unfinished tasks in the system.
+
+    Returns:
+      bool: True if unfinished tasks exist, otherwise False.
+    """
     return self._task_store.has_unfinished_tasks()

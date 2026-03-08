@@ -7,10 +7,30 @@ import logging
 
 
 class LilotaScheduler(LilotaNode):
+  """Scheduler node responsible for creating and managing tasks.
+
+  The scheduler registers itself as a scheduler node in the system and
+  periodically sends heartbeats to indicate it is alive. Its main role
+  is to create tasks and store them in the task store for workers to
+  execute.
+  """
 
   LOGGER_NAME = "lilota.scheduler"
 
   def __init__(self, db_url: str, node_heartbeat_interval: float = 5.0, node_timeout_sec: int = 20, logging_level=logging.INFO, **kwargs):
+    """Initialize the scheduler node.
+
+    Args:
+      db_url (str): Database connection URL.
+      node_heartbeat_interval (float, optional): Interval in seconds between
+        node heartbeats. Defaults to 5.0.
+      node_timeout_sec (int, optional): Time in seconds before a node is
+        considered inactive. Defaults to 20.
+      logging_level (int, optional): Logging level used by the scheduler.
+        Defaults to logging.INFO.
+      **kwargs: Additional keyword arguments passed to the parent
+        ``LilotaNode`` initializer.
+    """
     super().__init__(
       db_url=db_url,
       node_type=NodeType.SCHEDULER,
@@ -47,6 +67,14 @@ class LilotaScheduler(LilotaNode):
 
 
   def schedule(self, name: str, input: Any = None) -> int:
-    # Save the task infos in the store
+    """Create and store a new task.
+
+    Args:
+      name (str): Name of the registered task.
+      input (Any, optional): Input payload for the task. Defaults to None.
+
+    Returns:
+      int: Identifier of the created task.
+    """
     self._logger.debug(f"Create task (name: '{name}', input: {input})")
     return self._task_store.create_task(name, input)
