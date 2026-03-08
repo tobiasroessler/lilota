@@ -56,6 +56,7 @@ pip install lilota
 ## Simple mode and Cluster mode
 
 lilota supports two modes:
+
 * Simple mode
 * Cluster mode
 
