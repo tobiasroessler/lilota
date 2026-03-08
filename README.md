@@ -99,7 +99,9 @@ class AddOutput():
   sum: int
 
 
-lilota = Lilota(db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample")
+lilota = Lilota(
+  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample"
+)
 
 @lilota.register("add", input_model=AddInput, output_model=AddOutput)
 def add(data: AddInput) -> AddOutput:
@@ -113,9 +115,9 @@ def main():
   # Schedule a task
   task_id = lilota.schedule("add", AddInput(a=2, b=3))
 
-  # Wait one second because Lilota runs in the background and decides when to pick up a task.
-  # This is normally not needed. We do it here because we want to wait until the task 
-  # has been executed.
+  # Wait one second because Lilota runs in the background and decides 
+  # when to pick up a task. This is normally not needed. We do it 
+  # here because we want to wait until the task has been executed.
   time.sleep(1)
 
   # Retrieve task information from the database and print the result
