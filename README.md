@@ -56,8 +56,8 @@ pip install lilota
 ## Simple mode and Cluster mode
 
 lilota supports two modes:
--   Simple mode
--   Cluster mode
+* Simple mode
+* Cluster mode
 
 In **Simple mode** one scheduler and one worker is started. The scheduler is responsible for scheduling the
 tasks and the worker executes the tasks. A worker is executing only one task at a time.
