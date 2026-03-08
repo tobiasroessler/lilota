@@ -9,13 +9,29 @@ LILOTA_LOGGER_NAME = "lilota"
 
 
 class SqlAlchemyHandler(logging.Handler):
+  """Logging handler that stores log records in the database.
+
+  This handler writes log messages to the ``lilota_log`` table using
+  the provided :class:`SqlAlchemyLogStore`. Each log record is converted
+  into a :class:`LogEntry` model instance.
+  """
 
   def __init__(self, log_store: SqlAlchemyLogStore):
+    """Initialize the logging handler.
+
+    Args:
+      log_store (SqlAlchemyLogStore): Store used to persist log entries.
+    """
     super().__init__()
     self.log_store: SqlAlchemyLogStore = log_store
 
 
   def emit(self, record: logging.LogRecord) -> None:
+    """Persist a log record in the database.
+
+    Args:
+      record (logging.LogRecord): Log record to store.
+    """
     with self.log_store.get_session() as session:
       entry = LogEntry(
         created_at=datetime.fromtimestamp(record.created),
@@ -33,8 +49,23 @@ class SqlAlchemyHandler(logging.Handler):
 
 
 class ContextLogger(logging.LoggerAdapter):
+  """Logger adapter that automatically injects contextual metadata.
+
+  This adapter attaches additional context such as ``node_id`` and
+  ``task_id`` to log records so that log entries can be associated
+  with specific nodes or tasks.
+  """
 
   def process(self, msg, kwargs):
+    """Inject contextual metadata into the log record.
+
+    Args:
+      msg (str): Log message.
+      kwargs (dict): Keyword arguments passed to the logger.
+
+    Returns:
+      tuple: Processed ``(msg, kwargs)`` pair with injected metadata.
+    """
     kwargs.setdefault("extra", {})
     kwargs["extra"].setdefault("node_id", self.extra.get("node_id"))
     kwargs["extra"].setdefault("task_id", self.extra.get("task_id"))
@@ -43,8 +74,21 @@ class ContextLogger(logging.LoggerAdapter):
 
 
 class LilotaLoggingFilter(logging.Filter):
+  """Logging filter used to suppress noisy third-party logs.
+
+  Currently filters Alembic logs so that only warnings and errors
+  are recorded.
+  """
 
   def filter(self, record: logging.LogRecord) -> bool:
+    """Determine whether a log record should be processed.
+
+    Args:
+      record (logging.LogRecord): Log record being evaluated.
+
+    Returns:
+      bool: ``True`` if the record should be logged, otherwise ``False``.
+    """
     if record.name.startswith("alembic."):
       return record.levelno >= logging.WARNING
     return True
@@ -52,6 +96,18 @@ class LilotaLoggingFilter(logging.Filter):
 
 
 def configure_logging(db_url: str, logging_level: int) -> logging.Logger:
+  """Configure the Lilota logging system.
+
+  Creates a logger that writes log messages to the database using
+  :class:`SqlAlchemyHandler`.
+
+  Args:
+    db_url (str): Database connection URL used by the log store.
+    logging_level (int): Logging level to apply to the logger and handler.
+
+  Returns:
+    logging.Logger: Configured Lilota logger instance.
+  """
   logger = logging.getLogger(f"{LILOTA_LOGGER_NAME}")
   logger.setLevel(logging_level)
   logger.handlers.clear()
@@ -64,6 +120,18 @@ def configure_logging(db_url: str, logging_level: int) -> logging.Logger:
 
 
 def create_context_logger(base_logger: logging.Logger, **kwargs):
+  """Create a context-aware logger.
+
+  The returned logger automatically attaches contextual metadata
+  (such as ``node_id`` and ``task_id``) to all emitted log records.
+
+  Args:
+    base_logger (logging.Logger): Base logger instance.
+    **kwargs: Optional context values (e.g., ``node_id``, ``task_id``).
+
+  Returns:
+    ContextLogger: Logger adapter with contextual metadata.
+  """
   extra = {}
 
   if "node_id" in kwargs:
