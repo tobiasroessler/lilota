@@ -7,6 +7,26 @@ from uuid import UUID
 
 
 class Lilota():
+  """High-level interface for task scheduling and execution.
+
+  This class coordinates a LilotaScheduler and LilotaWorker instance
+  to provide a unified API for registering, scheduling, and managing tasks.
+
+  Args:
+    db_url (str): Database connection URL.
+    node_heartbeat_interval (float, optional): Interval in seconds between
+      node heartbeats. Defaults to 5.
+    node_timeout_sec (int, optional): Time in seconds before a node is
+      considered inactive. Defaults to 20.
+    logging_level (int, optional): Logging level used by scheduler and worker.
+      Defaults to logging.DEBUG.
+    task_heartbeat_interval (float, optional): Initial interval in seconds
+      between task heartbeats. Defaults to 0.1.
+    max_task_heartbeat_interval (float, optional): Maximum interval in seconds
+      between task heartbeats. Defaults to 5.0.
+    set_progress_manually (bool, optional): Whether task progress must be
+      updated manually. Defaults to False.
+  """
 
   def __init__(self, db_url: str, node_heartbeat_interval: float = 5, node_timeout_sec: int = 20, logging_level = logging.DEBUG, task_heartbeat_interval: float = 0.1, max_task_heartbeat_interval: float = 5.0, set_progress_manually: bool = False):
     self._db_url = db_url
@@ -55,6 +75,24 @@ class Lilota():
     output_model=None,
     task_progress=None
   ):
+    """Decorator for registering a task function.
+
+    This method allows task registration using decorator syntax.
+
+    Example:
+      @lilota.register("my_task")
+      def my_task(data):
+        return data
+
+    Args:
+      name (str): Unique name of the task.
+      input_model (Optional[Type[Any]]): Optional input validation model.
+      output_model (Optional[Type[Any]]): Optional output validation model.
+      task_progress (Optional[TaskProgress]): Task progress tracking strategy.
+
+    Returns:
+      Callable: A decorator that registers the function.
+    """
     def decorator(func):
       self._worker._register(
         name=name,

@@ -26,12 +26,20 @@ def add(data: AddInput) -> AddOutput:
 
 
 def main():
+  # Start lilota
   lilota.start()
+
+  # Schedule a task
   task_id = lilota.schedule("add", AddInput(a=2, b=3))
-  time.sleep(0.5)
-  lilota.stop()
+
+  # Wait one second because Lilota runs in the background and decides when to pick up a task.
+  # This is normally not needed. We do it here because we want to wait until the task 
+  # has been executed.
+  time.sleep(1)
+
+  # Retrieve task information from the database and print the result
   task: Task = lilota.get_task_by_id(task_id)
-  print("We add the numbers 2 and 3: ")
+  print(f"We add the numbers 2 and 3: ")
   print(task.output)
 
 
