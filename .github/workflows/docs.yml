@@ -23,7 +23,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install "mkdocs<2.0" mkdocs-material 
+          pip install mkdocs-material mkdocstrings
           pip install pymdown-extensions
 
       - name: Deploy documentation
