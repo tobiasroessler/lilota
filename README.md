@@ -12,7 +12,7 @@ setup and overhead.
   - [Features](#features)
   - [When to use lilota](#when-to-use-lilota)
   - [Installation](#installation)
-  - [Simple and Cluster mode](#simple-and-cluster-mode)
+  - [Simple mode and Cluster mode](#simple-mode-and-cluster-mode)
   - [Quick example (Simple mode)](#quick-example-simple-mode)
     - [Define input and output models](#define-input-and-output-models)
     - [Create a lilota instance](#create-a-lilota-instance)
@@ -53,7 +53,7 @@ pip install lilota
 ```
 
 
-## Simple and Cluster mode
+## Simple mode and Cluster mode
 
 lilota supports two modes:
 1. Simple mode
