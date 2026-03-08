@@ -1,0 +1,18 @@
+site_name: lilota
+site_url: https://mydomain.org/mysite
+theme:
+  name: material
+plugins:
+  - search
+  - mkdocstrings
+markdown_extensions:
+  - pymdownx.snippets
+nav:
+  - lilota: index.md
+  - User Guide:
+    - Simple Mode: simple-mode.md
+    - Cluster Mode: cluster-mode.md
+    - Shutdown: shutdown.md
+    - Database: database.md
+  - Reference:
+    - Lilota: lilota-reference.md

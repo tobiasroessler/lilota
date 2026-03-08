@@ -1,0 +1,2 @@
+# Lilota module
+::: lilota.core
