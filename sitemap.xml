@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+         <loc>https://tobiasroessler.github.io/lilota/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
+         <loc>https://tobiasroessler.github.io/lilota/cluster-mode/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
+         <loc>https://tobiasroessler.github.io/lilota/database/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
+         <loc>https://tobiasroessler.github.io/lilota/lilota-reference/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
+         <loc>https://tobiasroessler.github.io/lilota/shutdown/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
+         <loc>https://tobiasroessler.github.io/lilota/simple-mode/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
+         <loc>https://tobiasroessler.github.io/lilota/task-registration/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+</urlset>
