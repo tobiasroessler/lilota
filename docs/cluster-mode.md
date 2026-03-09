@@ -15,7 +15,7 @@ To better understand how this works, we will look at the main classes involved.
 
 ## LilotaScheduler.py (lilota.scheduler)
 
-The class **LilotaScheduler.py** is responsible for scheduling tasks.
+The class [**LilotaScheduler.py**](https://tobiasroessler.github.io/lilota/lilota-reference/#lilota.scheduler.LilotaScheduler) is responsible for scheduling tasks.
 
 It performs tasks such as:
 
@@ -30,7 +30,7 @@ Typically, only **one scheduler** should run in a cluster.
 
 ## LilotaWorker.py (lilota.worker)
 
-**LilotaWorker.py** provides workers that pick up scheduled tasks and execute them.
+[**LilotaWorker.py**](https://tobiasroessler.github.io/lilota/lilota-reference/#lilota.worker.LilotaWorker) provides workers that pick up scheduled tasks and execute them.
 
 In **Cluster mode**, multiple workers can run simultaneously. Each worker independently polls the database for available tasks. When a worker retrieves a task, it locks the task, preventing other workers from executing it. This ensures that each task is executed exactly once.
 

@@ -9,19 +9,19 @@ To better understand what this means, we need to briefly look at the main classe
 
 ## LilotaScheduler.py (lilota.scheduler)
 
-The class **LilotaScheduler.py** is used by the user to schedule tasks.
+The class [**LilotaScheduler.py**](https://tobiasroessler.github.io/lilota/lilota-reference/#lilota.scheduler.LilotaScheduler) is used by the user to schedule tasks.
 It does not execute tasks. Task execution can only be performed by a worker.
 
 
 ## LilotaWorker.py (lilota.worker)
 
-**LilotaWorker.py** provides a worker that picks up scheduled tasks and executes them.
+[**LilotaWorker.py**](https://tobiasroessler.github.io/lilota/lilota-reference/#lilota.worker.LilotaWorker) provides a worker that picks up scheduled tasks and executes them.
 For each instance of this class, one worker is started that runs in the background when using **Simple mode**.
 
 
 ## Lilota.py (lilota.core)
 
-**Lilota.py** is the heart of **Simple mode**, but it acts only as a facade. Internally, it creates one instance of **LilotaScheduler.py** and one instance of **LilotaWorker.py**.
+[**Lilota.py**](https://tobiasroessler.github.io/lilota/lilota-reference/#lilota.core.Lilota) is the heart of **Simple mode**, but it acts only as a facade. Internally, it creates one instance of [**LilotaScheduler.py**](https://tobiasroessler.github.io/lilota/lilota-reference/#lilota.scheduler.LilotaScheduler) and one instance of [**LilotaWorker.py**](https://tobiasroessler.github.io/lilota/lilota-reference/#lilota.worker.LilotaWorker).
 
 This means that tasks scheduled by the scheduler are executed by a **single worker running in the background**.
 
