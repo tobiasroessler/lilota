@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lilota"
-version = "0.8.0"
+version = "0.10.0"
 authors = [
   { name="Tobias Rössler", email="tobiasroessler@gmail.com" },
 ]
@@ -37,4 +37,5 @@ exclude = ["tests*"]
 
 [project.urls]
 Homepage = "https://github.com/tobiasroessler/lilota"
+Documentation = "https://tobiasroessler.github.io/lilota/"
 Issues = "https://github.com/tobiasroessler/lilota/issues"

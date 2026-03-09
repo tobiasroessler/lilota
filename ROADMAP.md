@@ -1,7 +1,7 @@
 # TODO
 
 
-## Version 0.9.0
+## Version 0.10.0
 
 * Documentation (README.md, docstrings, documentation on GitHub)
 * Deployment

@@ -20,6 +20,7 @@ setup and overhead.
     - [Start lilota](#start-lilota)
     - [Schedule a task](#schedule-a-task)
     - [Retrieve task information including the output (if available)](#retrieve-task-information-including-the-output-if-available)
+  - [Documentation](#documentation)
   - [Examples](#examples)
 
 
@@ -193,6 +194,11 @@ task: Task = lilota.get_task_by_id(task_id)
 add_output = AddOutput(**task.output)
 print(add_output.sum)
 ```
+
+
+## Documentation
+
+[https://tobiasroessler.github.io/lilota/](https://tobiasroessler.github.io/lilota/)
 
 
 ## Examples
