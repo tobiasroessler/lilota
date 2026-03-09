@@ -12,6 +12,7 @@ nav:
   - User Guide:
     - Simple Mode: simple-mode.md
     - Cluster Mode: cluster-mode.md
+    - Task registration: task-registration.md
     - Shutdown: shutdown.md
     - Database: database.md
   - Reference:
