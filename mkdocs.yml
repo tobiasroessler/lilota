@@ -10,8 +10,7 @@ markdown_extensions:
 nav:
   - lilota: index.md
   - User Guide:
-    - Simple Mode: simple-mode.md
-    - Cluster Mode: cluster-mode.md
+    - Lilota is simple: lilota-is-simple.md
     - Task registration: task-registration.md
     - Shutdown: shutdown.md
     - Database: database.md

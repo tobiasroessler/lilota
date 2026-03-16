@@ -3,7 +3,7 @@
 
 ## Introduction
 
-Before a function can be executed by **lilota**, it must be **registered as a task**. A task is simply a Python function that is registered using the **@lilota.register()** decorator. Once registered, the task can be scheduled using:
+Before a function can be executed by **LilotaWorker**, it must be **registered as a task**. A task is simply a Python function that is registered using the **@worker.register()** decorator. Once registered, the task can be scheduled using:
 
 ```python
 lilota.schedule("task-name")
@@ -14,19 +14,30 @@ lilota.schedule("task-name")
 
 The simplest task does not require input or output.
 
+**myscript.py**
 ``` python
-from lilota.core import Lilota
+from lilota.worker import LilotaWorker
 
-lilota = Lilota(
+worker = LilotaWorker(
   db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample"
 )
 
-@lilota.register("hello-world")
+@worker.register("hello-world")
 def hello_world():
   print("Hello World")
 ```
 
-The task can then be scheduled using its name:
+The task can then be scheduled using its name. Before a **lilota** instance needs to be created and started:
+
+``` python
+lilota = Lilota(
+  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample",
+  script_path="sample/myscript.py"
+)
+lilota.start()
+```
+
+After that the task can be scheduled:
 
 ``` python
 task_id = lilota.schedule("hello-world")
@@ -53,7 +64,7 @@ The following example defines a task that adds two numbers.
 
 ``` python
 from dataclasses import dataclass
-from lilota.core import Lilota
+from lilota.worker import LilotaWorker
 from lilota.models import Task
 
 
@@ -68,34 +79,18 @@ class AddOutput:
   sum: int
 
 
-lilota = Lilota(
+worker = LilotaWorker(
   db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample"
 )
 
 
-@lilota.register("add", input_model=AddInput, output_model=AddOutput)
+@worker.register("add", input_model=AddInput, output_model=AddOutput)
 def add(data: AddInput) -> AddOutput:
   return AddOutput(sum=data.a + data.b)
 
 
 def main():
-  number1 = 2
-  number2 = 3
-
-  # Start lilota
-  lilota.start()
-
-  # Schedule the task
-  task_id = lilota.schedule("add", AddInput(a=number1, b=number2))
-
-  # After worker picked up the task (put a sleep here to wait a bit)
-  task: Task = lilota.get_task_by_id(task_id)
-
-  # Get the ouput model
-  add_output = AddOutput(**task.output)
-
-  # Print the result
-  print(f"{number1} + {number2} = {add_output.sum}")  # 2 + 3 = 5
+  worker.start()
 
 
 if __name__ == "__main__":
@@ -130,15 +125,15 @@ add_output = AddOutput(**task.output)
 
 ## Tasks with setting progress manually
 
-Some tasks run for a longer time and should report progress. **Lilota** provides the **TaskProgress** helper for this purpose.
+Some tasks run for a longer time and should report progress. **LilotaWorker** provides the **TaskProgress** helper for this purpose.
 
 To enable this, the **set_progress_manually** option must be enabled when creating the Lilota instance.
 
 ``` python
-from lilota.core import Lilota
+from lilota.worker import LilotaWorker
 from lilota.models import TaskProgress
 
-lilota = Lilota(
+worker = LilotaWorker(
   db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample",
   set_progress_manually=True
 )
@@ -147,7 +142,7 @@ lilota = Lilota(
 Now a task can receive a **TaskProgress** object:
 
 ``` python
-@lilota.register("do-something", task_progress=TaskProgress)
+@worker.register("do-something", task_progress=TaskProgress)
 def do_something(task_progress: TaskProgress) -> None:
   for i in range(1, 101):
     task_progress.set(i)
@@ -160,35 +155,27 @@ task_progress.set(percentage)
 ```
 
 
-### Full example with setting progress manually
+### Full worker example with setting progress manually
 
 ``` python
-from lilota.core import Lilota
+from lilota.worker import LilotaWorker
 from lilota.models import Task, TaskProgress
 
 
-lilota = Lilota(
+worker = LilotaWorker(
   db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample",
   set_progress_manually=True
 )
 
 
-@lilota.register("do-something", task_progress=TaskProgress)
+@worker.register("do-something", task_progress=TaskProgress)
 def do_something(task_progress: TaskProgress) -> None:
   for i in range(1, 101):
     task_progress.set(i)
 
 
 def main():
-  # Start lilota
-  lilota.start()
-
-  # Schedule the task
-  task_id = lilota.schedule("do-something")
-
-  # After worker picked up the task (put a sleep here to wait a bit)
-  task: Task = lilota.get_task_by_id(task_id)
-  print(task.progress_percentage)  # Should be 100
+  worker.start()
 
 
 if __name__ == "__main__":
