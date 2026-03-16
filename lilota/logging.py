@@ -2,10 +2,6 @@ import logging
 from datetime import datetime
 from .models import LogEntry
 from .stores import SqlAlchemyLogStore
-from typing import Optional
-
-
-LILOTA_LOGGER_NAME = "lilota"
 
 
 class SqlAlchemyHandler(logging.Handler):
@@ -95,20 +91,29 @@ class LilotaLoggingFilter(logging.Filter):
   
 
 
-def configure_logging(db_url: str, logging_level: int) -> logging.Logger:
-  """Configure the Lilota logging system.
+def configure_logging(db_url: str, logger_name: str, logging_level: int) -> logging.Logger:
+  """Configure a Lilota logger that writes log messages to the database.
 
-  Creates a logger that writes log messages to the database using
-  :class:`SqlAlchemyHandler`.
+  This function creates and configures a logger with the given name. The
+  logger uses :class:`SqlAlchemyHandler` to persist log records in the
+  database through :class:`SqlAlchemyLogStore`. Any existing handlers
+  attached to the logger are removed before configuration.
 
   Args:
-    db_url (str): Database connection URL used by the log store.
-    logging_level (int): Logging level to apply to the logger and handler.
+    db_url (str):
+      Database connection URL used by the log store.
+
+    logger_name (str):
+      Name of the logger to configure.
+
+    logging_level (int):
+      Logging level to apply to both the logger and its handler.
 
   Returns:
-    logging.Logger: Configured Lilota logger instance.
+    logging.Logger:
+      Configured logger instance that writes log messages to the database.
   """
-  logger = logging.getLogger(f"{LILOTA_LOGGER_NAME}")
+  logger = logging.getLogger(logger_name)
   logger.setLevel(logging_level)
   logger.handlers.clear()
   db_handler = SqlAlchemyHandler(SqlAlchemyLogStore(db_url))

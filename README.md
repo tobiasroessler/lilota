@@ -2,7 +2,7 @@
 
 **lilota** is a lightweight Python library for executing long-running
 tasks in the background without the overhead of full-fledged task queue
-systems like Celery or RabbitMQ. While those tools are powerful and 
+systems. While those tools are powerful and 
 valuable, lilota focuses on scenarios where a simpler approach is sufficient.
 
 It is designed for simple, asynchronous task execution with minimal
@@ -12,14 +12,16 @@ setup and overhead.
   - [Features](#features)
   - [When to use lilota](#when-to-use-lilota)
   - [Installation](#installation)
-  - [Simple mode and Cluster mode](#simple-mode-and-cluster-mode)
-  - [Quick example (Simple mode)](#quick-example-simple-mode)
-    - [Define input and output models](#define-input-and-output-models)
-    - [Create a lilota instance](#create-a-lilota-instance)
-    - [Register a background task](#register-a-background-task)
-    - [Start lilota](#start-lilota)
-    - [Schedule a task](#schedule-a-task)
-    - [Retrieve task information including the output (if available)](#retrieve-task-information-including-the-output-if-available)
+  - [Quick example](#quick-example)
+    - [myscript.py](#myscriptpy)
+      - [Create a worker instance](#create-a-worker-instance)
+      - [Register a background task](#register-a-background-task)
+    - [Integration of **Lilota**](#integration-of-lilota)
+      - [Define input and output models](#define-input-and-output-models)
+      - [Create a Lilota instance](#create-a-lilota-instance)
+      - [Start lilota](#start-lilota)
+      - [Schedule a task](#schedule-a-task)
+      - [Retrieve task information including the output (if available)](#retrieve-task-information-including-the-output-if-available)
   - [Documentation](#documentation)
   - [Examples](#examples)
 
@@ -54,33 +56,79 @@ pip install lilota
 ```
 
 
-## Simple mode and Cluster mode
-
-lilota supports two modes: **Simple mode** and **Cluster mode**.
-
-In **Simple mode** one scheduler and one worker is started. The scheduler is responsible for scheduling the
-tasks and the worker executes the tasks. A worker is executing only one task at a time. More information
-can be found [here](https://tobiasroessler.github.io/lilota/simple-mode/).
-
-If you want to execute multiple tasks in parallel you have to run lilota in **Cluster mode**. Here 
-you have one scheduler and several workers. More information can be found [here](https://tobiasroessler.github.io/lilota/cluster-mode/).
-
-
-## Quick example (Simple mode)
+## Quick example
 
 This example demonstrates how to add two numbers using a function that runs in the background.
 
 This could, of course, also be a function that generates a report or performs
 a heavy computation. For simplicity, we will just add two numbers.
 
-First, we define a class used to pass input arguments to the background task.
-Here, we call this model **AddInput**, which has two properties: **a** and **b**.
+First, we have to create a script that has an instance of a worker (**LilotaWorker**). This worker
+registers one or several tasks that can be executed later on by a scheduler. 
 
-We also define an output model called **AddOutput**. This model is populated
-with the result of the computation and stored in the database, where it can
-later be retrieved.
 
-Here is the full example:
+### myscript.py
+
+``` python
+from dataclasses import dataclass
+from lilota.worker import LilotaWorker
+
+
+@dataclass
+class AddInput():
+    a: int
+    b: int
+
+
+@dataclass
+class AddOutput():
+  sum: int
+
+
+worker = LilotaWorker(
+  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample",
+  max_task_heartbeat_interval=0.1
+)
+
+
+@worker.register("add", input_model=AddInput, output_model=AddOutput)
+def add(input: AddInput) -> AddOutput:
+  return AddOutput(input.a + input.b)
+
+
+def main():
+  worker.start()
+
+
+if __name__ == "__main__":
+  main()
+```
+
+#### Create a worker instance
+
+``` python
+worker = LilotaWorker(
+  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample"
+)
+```
+
+In this example we use a url to a **postgres** database. **lilota** uses **SQLAlchemy** and therefore all
+databases that are supported by SQLAlchemy can be used here.
+
+
+#### Register a background task
+
+``` python
+@worker.register("add", input_model=AddInput, output_model=AddOutput)
+def add(data: AddInput) -> AddOutput:
+  return AddOutput(sum=data.a + data.b)
+```
+
+
+### Integration of **Lilota**
+
+The script we created above is passed to a **Lilota** instance and executed. The **Lilota** instance 
+can start several processes and every process executed that script once.
 
 ``` python
 from dataclasses import dataclass
@@ -101,12 +149,10 @@ class AddOutput():
 
 
 lilota = Lilota(
-  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample"
+  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample",
+  script_path="sample/myscript.py",
+  number_of_workers=8
 )
-
-@lilota.register("add", input_model=AddInput, output_model=AddOutput)
-def add(data: AddInput) -> AddOutput:
-  return AddOutput(sum=data.a + data.b)
 
 
 def main():
@@ -116,9 +162,9 @@ def main():
   # Schedule a task
   task_id = lilota.schedule("add", AddInput(a=2, b=3))
 
-  # Wait one second because Lilota runs in the background and decides 
-  # when to pick up a task. This is normally not needed. We do it 
-  # here because we want to wait until the task has been executed.
+  # Wait one second because Lilota runs in the background and decides when to pick up a task.
+  # This is normally not needed. We do it here because we want to wait until the task 
+  # has been executed.
   time.sleep(1)
 
   # Retrieve task information from the database and print the result
@@ -131,7 +177,12 @@ if __name__ == "__main__":
   main()
 ```
 
-### Define input and output models
+In this example we use two model classes. One for input arguments and one for the output.
+Normally these models should be in their own module and used by **Lilota** and by the 
+**LilotaWorker**.
+
+
+#### Define input and output models
 
 * Input and output models are optional
 * You do not have to use **dataclasses** for these models. You can use any
@@ -148,35 +199,25 @@ can be found here:
 [5-setting-task-progress-manually.py](https://github.com/tobiasroessler/lilota-sample/blob/main/src/5-setting-task-progress-manually.py)
 
 
-### Create a lilota instance
+#### Create a Lilota instance
 
 ``` python
 lilota = Lilota(
-  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample"
+  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample",
+  script_path="sample/myscript.py",
+  number_of_workers=8
 )
 ```
 
-In this example we use a url to a **postgres** database. **lilota** uses **SQLAlchemy** and therefore all
-databases that are supported by SQLAlchemy can be used here.
 
-
-### Register a background task
-
-``` python
-@lilota.register("add", input_model=AddInput, output_model=AddOutput)
-def add(data: AddInput) -> AddOutput:
-  return AddOutput(sum=data.a + data.b)
-```
-
-
-### Start lilota
+#### Start lilota
 
 ``` python
 lilota.start()
 ```
 
 
-### Schedule a task
+#### Schedule a task
 
 ``` python
 task_id = lilota.schedule("add", AddInput(a=2, b=3))
@@ -187,7 +228,7 @@ executing it immediately.
 The ID of the stored task is returned.
 
 
-### Retrieve task information including the output (if available)
+#### Retrieve task information including the output (if available)
 
 ``` python
 task: Task = lilota.get_task_by_id(task_id)

@@ -18,11 +18,11 @@ class AddOutput():
   sum: int
 
 
-lilota = Lilota(db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample")
-
-@lilota.register("add", input_model=AddInput, output_model=AddOutput)
-def add(data: AddInput) -> AddOutput:
-  return AddOutput(sum=data.a + data.b)
+lilota = Lilota(
+  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample",
+  script_path="sample/myscript.py",
+  number_of_workers=1
+)
 
 
 def main():
@@ -41,6 +41,9 @@ def main():
   task: Task = lilota.get_task_by_id(task_id)
   print(f"We add the numbers 2 and 3: ")
   print(task.output)
+
+  # Stop lilota and stop all running processes
+  lilota.stop()
 
 
 if __name__ == "__main__":

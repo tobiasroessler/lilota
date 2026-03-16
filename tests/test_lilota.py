@@ -3,12 +3,13 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from alembic import command
 from dataclasses import dataclass
+import logging
 from unittest import TestCase, main
 from typing import Any
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from lilota.core import Lilota
-from lilota.models import Node, NodeLeader, Task, TaskStatus, TaskProgress, LogEntry
+from lilota.models import Node, NodeLeader, Task, TaskStatus, LogEntry, NodeType
 from lilota.db.alembic import get_alembic_config
 from lilota.stores import SqlAlchemyLogStore
 import time
@@ -63,51 +64,6 @@ class AddOutputInvalid():
     self.sum = sum
 
 
-def add(data: AddInput) -> AddOutput:
-  return AddOutput(sum=data.a + data.b)
-
-
-def add_with_exception(data: AddInput) -> AddOutput:
-  raise Exception("Error")
-
-
-def add_with_dataclasses(data: AddInputDataclass) -> AddOutputDataclass:
-  return AddOutputDataclass(sum=data.a + data.b)
-
-
-def add_with_dict(data: dict[str, int]) -> dict[str, int]:
-  return {
-    "sum": data["a"] + data["b"]
-  }
-
-
-def add_with_taskprogress(data: AddInput, task_progress: TaskProgress):
-  task_progress.set(50)
-
-
-def hello_world():
-  print("Hello Word")
-
-
-def only_input_model(data: AddInput) -> None:
-  print("Hello World")
-
-
-def only_output_model() -> AddOutput:
-  return AddOutput(sum=3)
-
-
-def only_taskprogress(task_progress: TaskProgress) -> None:
-  task_progress.set(50)
-
-
-EXTERNAL_STATE = {"counter": 0}
-
-def task_mutates_external_state() -> dict[str, int]:
-  EXTERNAL_STATE["counter"] += 1
-  return EXTERNAL_STATE
-
-
 
 class LilotaTestCase(TestCase):
 
@@ -145,182 +101,260 @@ class LilotaTestCase(TestCase):
 
   def test_stop___start_and_directly_stop___should_shutdown_all_processes(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.DB_URL)
-    lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
-    lilota.start()
-    self.assertTrue(lilota._is_started)
+    lilota = Lilota(
+      db_url=LilotaTestCase.DB_URL,
+      script_path="scripts/lilota_test_script.py",
+      number_of_workers=8
+    )
+
+    try:
+      lilota.start()
+      self.assertTrue(lilota._is_started)
+      self.assertEqual(len(lilota._processes), 8)
+      for p in lilota._processes:
+        self.assertTrue(p.is_alive())
+    except Exception:
+      lilota.stop()
 
     # Act
     lilota.stop()
 
     # Assert
     self.assertFalse(lilota._is_started)
+    self.assertEqual(len(lilota._processes), 0)
 
 
   def test_schedule___add_1_hello_world_task___should_execute_task(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.DB_URL, max_task_heartbeat_interval=0.1)
-    lilota._register(name="hello_world", func=hello_world)
+    lilota = Lilota(
+      db_url=LilotaTestCase.DB_URL,
+      script_path="tests/scripts/hello_world_test_script.py",
+      number_of_workers=1
+    )
     lilota.start()
 
     # Act
-    id = lilota.schedule("hello_world")
+    try:
+      id = lilota.schedule("hello_world")
+    except:
+      lilota.stop()
 
     # Assert
-    self.sleep()
-    lilota.stop()
-    task = lilota.get_task_by_id(id)
-    self.assertEqual(task.status, TaskStatus.COMPLETED)
-    self.assertIsNone(task.error)
-    self.assertEqual(task.progress_percentage, 100)
-    self.assertIsNone(task.input)
-    self.assertIsNone(task.output)
+    try:
+      self.sleep()
+      task = lilota.get_task_by_id(id)
+      self.assertEqual(task.status, TaskStatus.COMPLETED)
+      self.assertIsNone(task.error)
+      self.assertEqual(task.progress_percentage, 100)
+      self.assertIsNone(task.input)
+      self.assertIsNone(task.output)
+    finally:
+      lilota.stop()
 
 
   def test_schedule___add_1_task_with_only_input_model___should_execute_task(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.DB_URL)
-    lilota._register(name="only_input_model", func=only_input_model, input_model=AddInput)
+    lilota = Lilota(
+      db_url=LilotaTestCase.DB_URL,
+      script_path="tests/scripts/lilota_test_script.py",
+      number_of_workers=1
+    )
     lilota.start()
 
     # Act
-    id = lilota.schedule("only_input_model", AddInput(a=1, b=2))
+    try:  
+      id = lilota.schedule("only_input_model", AddInput(a=1, b=2))
+    except:
+      lilota.stop()
 
     # Assert
-    self.sleep()
-    lilota.stop()
-    task = lilota.get_task_by_id(id)
-    self.assertEqual(task.status, TaskStatus.COMPLETED)
-    self.assertIsNone(task.error)
-    self.assertEqual(task.progress_percentage, 100)
-    self.assertIsNotNone(task.input)
-    self.assertIsNone(task.output)
+    try:
+      self.sleep()
+      task = lilota.get_task_by_id(id)
+      self.assertEqual(task.status, TaskStatus.COMPLETED)
+      self.assertIsNone(task.error)
+      self.assertEqual(task.progress_percentage, 100)
+      self.assertIsNotNone(task.input)
+      self.assertIsNone(task.output)
+    finally:
+      lilota.stop()
 
 
   def test_schedule___add_1_task_with_only_output_model___should_execute_task(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.DB_URL)
-    lilota._register(name="only_output_model", func=only_output_model, output_model=AddOutput)
+    lilota = Lilota(
+      db_url=LilotaTestCase.DB_URL,
+      script_path="tests/scripts/lilota_test_script.py",
+      number_of_workers=1
+    )
     lilota.start()
 
     # Act
-    id = lilota.schedule("only_output_model")
+    try:
+      id = lilota.schedule("only_output_model")
+    except:
+      lilota.stop()
 
     # Assert
-    self.sleep()
-    lilota.stop()
-    task = lilota.get_task_by_id(id)
-    self.assertEqual(task.status, TaskStatus.COMPLETED)
-    self.assertIsNone(task.error)
-    self.assertEqual(task.progress_percentage, 100)
-    self.assertIsNone(task.input)
-    self.assertIsNotNone(task.output)
-    result = task.output['sum']
-    self.assertEqual(3, result)
+    try:
+      self.sleep(seconds=1)
+      task = lilota.get_task_by_id(id)
+      self.assertEqual(task.status, TaskStatus.COMPLETED)
+      self.assertIsNone(task.error)
+      self.assertEqual(task.progress_percentage, 100)
+      self.assertIsNone(task.input)
+      self.assertIsNotNone(task.output)
+      result = task.output['sum']
+      self.assertEqual(3, result)
+    finally:
+      lilota.stop()
 
 
   def test_schedule___add_1_task_with_only_taskprogress___should_execute_task(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.DB_URL, set_progress_manually=True)
-    lilota._register(name="only_taskprogress", func=only_taskprogress, task_progress=TaskProgress)
+    lilota = Lilota(
+      db_url=LilotaTestCase.DB_URL,
+      script_path="tests/scripts/taskprogress_test_script.py",
+      number_of_workers=1
+    )
     lilota.start()
 
     # Act
-    id = lilota.schedule("only_taskprogress")
+    try:
+      id = lilota.schedule("only_taskprogress")
+    except:
+      lilota.stop()
 
     # Assert
-    self.sleep()
-    lilota.stop()
-    task: Task = lilota.get_task_by_id(id)
-    self.assertEqual(task.progress_percentage, 50)
+    try:
+      self.sleep()
+      task: Task = lilota.get_task_by_id(id)
+      self.assertEqual(task.progress_percentage, 50)
+    finally:
+      lilota.stop()
 
 
-  def test_schedule___add_1_task_using_model_protocol___should_calculate_the_result(self):
+  def test_schedule___add_1_task_using_input_and_output_model___should_calculate_the_result(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.DB_URL)
-    lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
+    lilota = Lilota(
+      db_url=LilotaTestCase.DB_URL,
+      script_path="tests/scripts/lilota_test_script.py",
+      number_of_workers=1
+    )
     lilota.start()
 
     # Act
-    id = lilota.schedule("add", AddInput(a=1, b=2))
+    try:
+      id = lilota.schedule("add", AddInput(a=1, b=2))
+    except:
+      lilota.stop()
 
     # Assert
-    self.sleep()
-    lilota.stop()
-    task = lilota.get_task_by_id(id)
-    self.assertEqual(task.status, TaskStatus.COMPLETED)
-    self.assertIsNone(task.error)
-    self.assertEqual(task.progress_percentage, 100)
-    number1 = task.input['a']
-    number2 = task.input['b']
-    result = task.output['sum']
-    self.assertEqual(number1 + number2, result)
+    try:
+      self.sleep()
+      task = lilota.get_task_by_id(id)
+      self.assertEqual(task.status, TaskStatus.COMPLETED)
+      self.assertIsNone(task.error)
+      self.assertEqual(task.progress_percentage, 100)
+      number1 = task.input['a']
+      number2 = task.input['b']
+      result = task.output['sum']
+      self.assertEqual(number1 + number2, result)
+    finally:
+      lilota.stop()
 
 
   def test_schedule___with_taskprogress_object_passed___should_have_registered_task(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.DB_URL, set_progress_manually=True)
-    lilota._register(name="add_with_taskprogress", func=add_with_taskprogress, input_model=AddInput, output_model=AddOutput, task_progress=TaskProgress)
+    lilota = Lilota(
+      db_url=LilotaTestCase.DB_URL,
+      script_path="tests/scripts/taskprogress_test_script.py",
+      number_of_workers=1
+    )
     lilota.start()
 
     # Act
-    id = lilota.schedule("add_with_taskprogress", AddInputDataclass(a=1, b=2))
+    try:
+      id = lilota.schedule("add_with_taskprogress", AddInputDataclass(a=1, b=2))
+    except:
+      lilota.stop()
 
     # Assert
-    self.sleep()
-    lilota.stop()
-    task: Task = lilota.get_task_by_id(id)
-    self.assertEqual(task.progress_percentage, 50)
+    try:
+      self.sleep()
+      task: Task = lilota.get_task_by_id(id)
+      self.assertEqual(task.progress_percentage, 50)
+    finally:
+      lilota.stop()
 
 
   def test_schedule___add_1_task_using_dataclasses___should_calculate_the_result(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.DB_URL)
-    lilota._register(name="add_with_dataclasses", func=add_with_dataclasses, input_model=AddInputDataclass, output_model=AddOutputDataclass)
+    lilota = Lilota(
+      db_url=LilotaTestCase.DB_URL,
+      script_path="tests/scripts/lilota_test_script.py",
+      number_of_workers=1
+    )
     lilota.start()
 
     # Act
-    id = lilota.schedule("add_with_dataclasses", AddInputDataclass(a=1, b=2))
+    try:
+      id = lilota.schedule("add_with_dataclasses", AddInputDataclass(a=1, b=2))
+    except:
+      lilota.stop()
 
     # Assert
-    self.sleep()
-    lilota.stop()
-    task = lilota.get_task_by_id(id)
-    self.assertEqual(task.status, TaskStatus.COMPLETED)
-    self.assertIsNone(task.error)
-    self.assertEqual(task.progress_percentage, 100)
-    number1 = task.input['a']
-    number2 = task.input['b']
-    result = task.output['sum']
-    self.assertEqual(number1 + number2, result)
+    try:
+      self.sleep()
+      task = lilota.get_task_by_id(id)
+      self.assertEqual(task.status, TaskStatus.COMPLETED)
+      self.assertIsNone(task.error)
+      self.assertEqual(task.progress_percentage, 100)
+      number1 = task.input['a']
+      number2 = task.input['b']
+      result = task.output['sum']
+      self.assertEqual(number1 + number2, result)
+    finally:
+      lilota.stop()
 
 
   def test_schedule___add_1_task_using_dict___should_calculate_the_result(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.DB_URL)
-    lilota._register(name="add_with_dict", func=add_with_dict, input_model=dict[str, int], output_model=dict[str, int])
+    lilota = Lilota(
+      db_url=LilotaTestCase.DB_URL,
+      script_path="tests/scripts/lilota_test_script.py",
+      number_of_workers=1
+    )
     lilota.start()
 
     # Act
-    id = lilota.schedule("add_with_dict", { "a": 1, "b": 2 })
+    try:
+      id = lilota.schedule("add_with_dict", { "a": 1, "b": 2 })
+    except:
+      lilota.stop()
 
     # Assert
-    self.sleep()
-    lilota.stop()
-    task = lilota.get_task_by_id(id)
-    self.assertEqual(task.status, TaskStatus.COMPLETED)
-    self.assertIsNone(task.error)
-    self.assertEqual(task.progress_percentage, 100)
-    number1 = task.input['a']
-    number2 = task.input['b']
-    result = task.output['sum']
-    self.assertEqual(number1 + number2, result)
+    try:
+      self.sleep(seconds=1)
+      task = lilota.get_task_by_id(id)
+      self.assertEqual(task.status, TaskStatus.COMPLETED)
+      self.assertIsNone(task.error)
+      self.assertEqual(task.progress_percentage, 100)
+      number1 = task.input['a']
+      number2 = task.input['b']
+      result = task.output['sum']
+      self.assertEqual(number1 + number2, result)
+    finally:
+      lilota.stop()
 
 
   def test_schedule___add_1_task_using_invalid_model___should_calculate_the_result(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.DB_URL)
-    lilota._register(name="add_with_invalid_model", func=add_with_dataclasses, input_model=AddInputInvalid, output_model=AddOutputInvalid)
+    lilota = Lilota(
+      db_url=LilotaTestCase.DB_URL,
+      script_path="tests/scripts/lilota_test_script.py",
+      number_of_workers=1
+    )
     lilota.start()
     id = None
 
@@ -335,160 +369,160 @@ class LilotaTestCase(TestCase):
       lilota.stop()
 
 
-  def test_schedule___add_50_tasks___should_calculate_the_results(self):
+  def test_schedule___add_500_tasks___should_calculate_the_results(self):
     # Arrange
     ids = []
-    lilota = Lilota(LilotaTestCase.DB_URL)
-    lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)  
+    lilota = Lilota(
+      db_url=LilotaTestCase.DB_URL,
+      script_path="tests/scripts/lilota_test_script.py",
+      number_of_workers=20
+    )
     lilota.start()
 
     # Act
-    for i in range(1, 51):
-      id = lilota.schedule("add", AddInput(a=i, b=i))
-      ids.append(id)
+    try:
+      for i in range(1, 501):
+        id = lilota.schedule("add", AddInput(a=i, b=i))
+        ids.append(id)
+    except:
+      lilota.stop()
 
     # Assert
-    self.wait(lilota)
-    lilota.stop()
-    self.assertEqual(len(ids), 50)
+    try:
+      self.wait(lilota)
+      self.assertEqual(len(ids), 500)
 
-    index = 0
-    for id in ids:
-      index = index + 1
-      task = lilota.get_task_by_id(id)
-      number1 = task.input['a']
-      number2 = task.input['b']
-      if task.output is None:
-        self.fail()
-      result = task.output['sum']
-      self.assertEqual(number1 + number2, result)
-      self.assertEqual(task.status, TaskStatus.COMPLETED)
-      self.assertIsNone(task.error)
+      index = 0
+      for id in ids:
+        index = index + 1
+        task = lilota.get_task_by_id(id)
+        number1 = task.input['a']
+        number2 = task.input['b']
+        if task.output is None:
+          self.fail()
+        result = task.output['sum']
+        self.assertEqual(number1 + number2, result)
+        self.assertEqual(task.status, TaskStatus.COMPLETED)
+        self.assertIsNone(task.error)
+    finally:
+      lilota.stop()
 
 
   def test_schedule___start_lilota_twice_and_add_5_tasks___should_calculate_the_results(self):
     # Arrange
     ids = []
-    lilota = Lilota(LilotaTestCase.DB_URL)
-    lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)  
+    lilota = Lilota(
+      db_url=LilotaTestCase.DB_URL,
+      script_path="tests/scripts/lilota_test_script.py",
+      number_of_workers=1
+    )
     lilota.start()
     lilota.stop()
     lilota.start()
 
     # Act
-    for i in range(1, 6):
-      id = lilota.schedule("add", AddInput(a=i, b=i))
-      ids.append(id)
+    try:
+      for i in range(1, 6):
+        id = lilota.schedule("add", AddInput(a=i, b=i))
+        ids.append(id)
+    except:
+      lilota.stop()
 
     # Assert
-    self.wait(lilota)
-    lilota.stop()
-    self.assertEqual(len(ids), 5)
+    try:
+      self.wait(lilota)
+      self.assertEqual(len(ids), 5)
 
-    index = 0
-    for id in ids:
-      index = index + 1
-      task = lilota.get_task_by_id(id)
-      number1 = task.input['a']
-      number2 = task.input['b']
-      if task.output is None:
-        self.fail()
-      result = task.output['sum']
-      self.assertEqual(number1 + number2, result)
-      self.assertEqual(task.status, TaskStatus.COMPLETED)
-      self.assertIsNone(task.error)
+      index = 0
+      for id in ids:
+        index = index + 1
+        task = lilota.get_task_by_id(id)
+        number1 = task.input['a']
+        number2 = task.input['b']
+        if task.output is None:
+          self.fail()
+        result = task.output['sum']
+        self.assertEqual(number1 + number2, result)
+        self.assertEqual(task.status, TaskStatus.COMPLETED)
+        self.assertIsNone(task.error)
+    finally:
+      lilota.stop()
 
 
   def test_schedule___add_1_task_but_function_raises_exception___should_log_exception(self):
     # Arrange
-    lilota = Lilota(LilotaTestCase.DB_URL)
-    lilota._register(name="add_with_exception", func=add_with_exception, input_model=AddInput, output_model=AddOutput)
-    lilota.start()
-
-    # Act
-    id = lilota.schedule("add_with_exception", AddInput(a=1, b=2))
-
-    # Assert
-    self.sleep()
-    lilota.stop()
-    task = lilota.get_task_by_id(id)
-    self.assertEqual(task.status, TaskStatus.FAILED)
-    self.assertIsNotNone(task.error)
-    self.assertEqual(task.error["type"], "Exception")
-    self.assertEqual(task.error["message"], "Error")
-    self.assertEqual(task.progress_percentage, 100)
-    self.assertIsNone(task.output)
-
-
-  def test_schedule___task_uses_external_mutable_state___state_is_shared(self):
-    """
-    External mutable state is copied into worker processes.
-    Mutations inside tasks do affect parent process state.
-    """
-
-    # Arrange
-    self.assertEqual(EXTERNAL_STATE["counter"], 0)
-
-    lilota = Lilota(LilotaTestCase.DB_URL)
-    lilota._register(
-      name="task_mutates_external_state",
-      func=task_mutates_external_state,
-      output_model=dict[str, int]
+    lilota = Lilota(
+      db_url=LilotaTestCase.DB_URL,
+      script_path="tests/scripts/lilota_test_script.py",
+      number_of_workers=1
     )
     lilota.start()
 
     # Act
-    task_id = lilota.schedule("task_mutates_external_state")
-
-    # Assert
-    self.sleep()
-    lilota.stop()
-    task = lilota.get_task_by_id(task_id)
-    self.assertEqual(task.status, TaskStatus.COMPLETED)
-    self.assertEqual(task.output["counter"], 1)
-    self.assertEqual(EXTERNAL_STATE["counter"], 1)
-
-
-  def test_logging___when_starting_lilota_twice___should_log_correctly(self):
-    # Arrange
-    lilota1 = Lilota(LilotaTestCase.DB_URL)
-    lilota2 = Lilota(LilotaTestCase.DB_URL)
-    log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaTestCase.DB_URL)
-
-    # Act
-    lilota1.start()
-    lilota2.start()
+    try:
+      id = lilota.schedule("add_with_exception", AddInput(a=1, b=2))
+    except:
+      lilota.stop()
 
     # Assert
     try:
-      scheduler_node_1 = lilota1._scheduler.get_node()
-      scheduler_node_2 = lilota2._scheduler.get_node()
-      worker_node_1: Node = lilota1._worker.get_node()
-      worker_node_2: Node = lilota2._worker.get_node()
+      self.sleep()
+      task = lilota.get_task_by_id(id)
+      self.assertEqual(task.status, TaskStatus.FAILED)
+      self.assertIsNotNone(task.error)
+      self.assertEqual(task.error["type"], "Exception")
+      self.assertEqual(task.error["message"], "Error")
+      self.assertEqual(task.progress_percentage, 100)
+      self.assertIsNone(task.output)
     finally:
-      lilota1.stop()
-      lilota2.stop()
+      lilota.stop()
 
-    log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(scheduler_node_1.id)
-    self.assertEqual(len(log_entries), 2)
-    self.assertEqual(log_entries[0].message, "Node started")
-    self.assertEqual(log_entries[1].message, "Node stopped")
 
-    log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(scheduler_node_2.id)
-    self.assertEqual(len(log_entries), 2)
-    self.assertEqual(log_entries[0].message, "Node started")
-    self.assertEqual(log_entries[1].message, "Node stopped")
+  def test_logging___when_starting_lilota_with_two_workers___should_log_correctly(self):
+    # Arrange
+    lilota = Lilota(
+      db_url=LilotaTestCase.DB_URL,
+      script_path="tests/scripts/lilota_test_script.py",
+      number_of_workers=2,
+      logging_level=logging.DEBUG
+    )
+    log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaTestCase.DB_URL)
 
-    log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(worker_node_1.id)
-    self.assertEqual(len(log_entries), 3)
-    self.assertEqual("Node started", log_entries[0].message)
-    self.assertEqual(f"Leadership acquired first time (node id: {worker_node_1.id})", log_entries[1].message)
-    self.assertEqual("Node stopped", log_entries[2].message)
+    # Act
+    try:
+      lilota.start()
+    except:
+      lilota.stop()
 
-    log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(worker_node_2.id)
-    self.assertEqual(len(log_entries), 2)
-    self.assertEqual("Node started", log_entries[0].message)
-    self.assertEqual("Node stopped", log_entries[1].message)
+    # Assert
+    leadership_acquired = False
+
+    try:
+      self.sleep(seconds=1)
+      scheduler_node = lilota._scheduler.get_node()
+      worker_nodes = [n for n in lilota.get_all_nodes() if n.type == NodeType.WORKER]
+      worker_node_1: Node = worker_nodes[0]
+      worker_node_2: Node = worker_nodes[1]
+
+      log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(scheduler_node.id)
+      self.assertEqual(len(log_entries), 1)
+      self.assertEqual(log_entries[0].message, "Node started")
+
+      log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(worker_node_1.id)
+      self.assertEqual("Node started", log_entries[0].message)
+      if len(log_entries) == 2:
+        self.assertEqual(f"Leadership acquired first time (node id: {worker_node_1.id})", log_entries[1].message)
+        leadership_acquired = True
+
+      log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(worker_node_2.id)
+      self.assertEqual("Node started", log_entries[0].message)
+      if len(log_entries) == 2:
+        self.assertEqual(f"Leadership acquired first time (node id: {worker_node_2.id})", log_entries[1].message)
+        leadership_acquired = True
+
+      self.assertTrue(leadership_acquired)
+    finally:
+      lilota.stop()
 
 
   # def test_start___with_unfinished_task___should_schedule_the_task_again(self):
@@ -538,7 +572,7 @@ class LilotaTestCase(TestCase):
 
   def wait(self, lilota: Lilota) -> None:
     while True:
-      has_unfinished_tasks = lilota._worker.has_unfinished_tasks()
+      has_unfinished_tasks = lilota._scheduler.has_unfinished_tasks()
       if has_unfinished_tasks:
         self.sleep(1)
       else:

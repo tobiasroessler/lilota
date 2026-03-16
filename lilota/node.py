@@ -88,7 +88,6 @@ class LilotaNode(ABC):
     self._node_store = None
     self._task_store = None
     self._heartbeat: Heartbeat = None
-    self._logger_name = logger_name
     self._logging_level = logging_level
     self._is_started = False
 
@@ -96,7 +95,7 @@ class LilotaNode(ABC):
     upgrade_db(self._db_url)
 
     # Setup logging
-    self._logger = configure_logging(self._db_url, logging_level)
+    self._logger = configure_logging(self._db_url, logger_name, logging_level)
 
 
   def start(self):
@@ -120,13 +119,10 @@ class LilotaNode(ABC):
       self._task_store = SqlAlchemyTaskStore(self._db_url, self._logger, self._should_set_progress_manually())
 
       # Create node with status STARTING
-      self._node_id = self._node_store.create_node(self._node_type, NodeStatus.STARTING)
+      self._node_id = self._node_store.create_node(self._node_type, NodeStatus.IDLE)
 
       # Create a context logger
       self._logger = create_context_logger(self._logger, node_id=self._node_id)
-    else:
-      # Change status to STARTING
-      self._node_store.update_node_status(self._node_id, NodeStatus.STARTING)
 
     # Change status to RUNNING
     self._node_store.update_node_status(self._node_id, NodeStatus.RUNNING)

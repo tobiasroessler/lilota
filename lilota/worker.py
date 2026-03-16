@@ -1,13 +1,13 @@
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Type, Optional, Any
 from lilota.node import LilotaNode, NodeHeartbeatTask
-from lilota.models import Task, NodeType, TaskProgress, RegisteredTask
+from lilota.models import NodeType, TaskProgress, RegisteredTask
 from lilota.logging import create_context_logger
 from lilota.stores import SqlAlchemyNodeStore, SqlAlchemyNodeLeaderStore
 from lilota.heartbeat import Heartbeat
 from lilota.utils import exception_to_dict, error_to_dict
 import logging
-from threading import Thread, Event
+import time
 
 
 
@@ -99,7 +99,6 @@ class LilotaWorker(LilotaNode):
   def __init__(
     self,
     db_url: str,
-    run_in_thread: bool,
     node_heartbeat_interval: float = 5.0,
     node_timeout_sec: int = 20,
     task_heartbeat_interval: float = 0.1,
@@ -111,8 +110,6 @@ class LilotaWorker(LilotaNode):
 
     Args:
       db_url (str): Database connection URL.
-      run_in_thread (bool): Whether task execution should run in a background
-        thread.
       node_heartbeat_interval (float, optional): Interval in seconds between
         node heartbeats. Defaults to 5.0.
       node_timeout_sec (int, optional): Time in seconds before a node is
@@ -137,12 +134,9 @@ class LilotaWorker(LilotaNode):
       **kwargs,
     )
 
-    self._run_in_thread: bool = run_in_thread
-    self._thread: Thread = None
     self._task_heartbeat_interval: float = task_heartbeat_interval
     self._max_task_heartbeat_interval: float = max_task_heartbeat_interval
     self._set_progress_manually: bool = set_progress_manually
-    self._stop_event: Event = Event()
     self._registry: dict[str, RegisteredTask] = {}
 
 
@@ -233,18 +227,13 @@ class LilotaWorker(LilotaNode):
     self._logger.debug(f"Node started")
 
     # Execute tasks
-    if self._run_in_thread:
-      self._stop_event.clear()
-      self._thread = Thread(target=self._execute_tasks, daemon=True)
-      self._thread.start()
-    else:
-      self._execute_tasks()
+    self._execute_tasks()
 
 
   def _execute_tasks(self):
     interval: float = self._task_heartbeat_interval
 
-    while not self._stop_event.is_set():
+    while True:
       # Get the next available task
       task = self._task_store.get_next_task(self._node_id)
       if task:
@@ -287,30 +276,13 @@ class LilotaWorker(LilotaNode):
         interval = min(interval * 2, self._max_task_heartbeat_interval)
 
       # Sleep
-      self._stop_event.wait(interval)
+      time.sleep(interval)
 
 
   def _on_stop(self):
-    # Set stop event
-    self._stop_event.set()
-
-    # Stop the worker thread
-    if self._thread is not None:
-      self._thread.join()
-      self._thread = None
-
     # Stop worker heartbeat thread
     self._stop_node_heartbeat()
 
 
   def _should_set_progress_manually(self):
     return self._set_progress_manually
-  
-
-  def has_unfinished_tasks(self):
-    """Check whether there are unfinished tasks in the system.
-
-    Returns:
-      bool: True if unfinished tasks exist, otherwise False.
-    """
-    return self._task_store.has_unfinished_tasks()

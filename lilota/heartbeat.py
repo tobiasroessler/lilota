@@ -62,8 +62,11 @@ class Heartbeat(threading.Thread):
       # Execute
       try:
         self._task.execute()
-      except Exception:
-        self._logger.exception("Heartbeat task failed")
+      except Exception as ex:
+        if self._logger is not None:
+          self._logger.exception("Heartbeat task failed")
+        else:
+          raise
 
       # Wait
       interval = max(0.0, self._task.interval)

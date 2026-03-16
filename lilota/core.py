@@ -1,129 +1,290 @@
-from lilota.models import TaskProgress
+import importlib.util
+from lilota.heartbeat import Heartbeat, HeartbeatTask
+from lilota.logging import configure_logging
+from lilota.models import Node
 from lilota.scheduler import LilotaScheduler
-from lilota.worker import LilotaWorker
+from lilota.stores import SqlAlchemyNodeStore, SqlAlchemyTaskStore
 import logging
-from typing import Callable, Type, Optional, Any
+from multiprocessing import cpu_count, Process, Queue
+import os
+from queue import Empty
+import sys
+import traceback
+from threading import Thread
+from typing import Any
 from uuid import UUID
+import time
+
+
+
+def _run_script(script_path: str, error_queue: Queue) -> None:
+  try:
+    spec = importlib.util.spec_from_file_location("__main__", script_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+  except Exception as ex:
+    error_queue.put(
+      {
+        "pid": os.getpid(),
+        "type": type(ex).__name__,
+        "message": str(ex),
+        "traceback": traceback.format_exc()
+      }
+    )
+    sys.exit(1)
+
+
+
+class ProcessManagerTask(HeartbeatTask):
+  """
+  Periodic task responsible for monitoring child processes and propagating
+  exceptions raised inside them to the parent process.
+
+  The task checks a shared error queue for exceptions reported by child
+  processes. If an error is found, it reconstructs and raises the exception
+  in the parent process context so it can be handled or terminate execution.
+  """
+
+  def __init__(self, interval: float, processes: list[Process], error_queue: Queue):
+    """
+    Initialize the process manager task.
+
+    Args:
+        interval (float): Time interval (in seconds) between task executions.
+        processes (list[Process]): List of managed child processes.
+        error_queue (Queue): Queue used by child processes to report
+            exceptions back to the parent process. Each entry is expected
+            to contain a dictionary with exception metadata.
+    """
+    super().__init__(interval)
+    self._processes: list[Process] = processes
+    self._error_queue: Queue = error_queue
+
+
+  def execute(self):
+    """
+    Execute one monitoring cycle.
+
+    Attempts to retrieve an error report from the error queue without
+    blocking. If an error is present, it will be reconstructed and raised
+    in the parent process via `raise_child_exception`.
+
+    If the queue is empty, the method silently returns.
+    """
+    try:
+      error = self._error_queue.get_nowait()
+      self.raise_child_exception(error)
+    except Empty:
+      pass
+    
+
+  def raise_child_exception(self, error_info):
+    """
+    Reconstruct and raise an exception originating from a child process.
+
+    The error information is expected to be a dictionary containing:
+        - "type": Name of the exception class
+        - "message": Original exception message
+        - "traceback": Serialized traceback string from the child process
+
+    The method attempts to recreate the exception using the built-in
+    exception class matching the provided type name. If the exception
+    type cannot be resolved, a RuntimeError is used as a fallback.
+
+    Args:
+        error_info (dict): Dictionary containing exception metadata from
+            a child process.
+
+    Raises:
+        Exception: Reconstructed exception with the original message and
+        appended child traceback.
+    """
+    exc_type = error_info["type"]
+    exc_message = error_info["message"]
+    tb = error_info["traceback"]
+
+    # Create a new exception instance with the same message
+    # Fallback to RuntimeError if type unknown
+    try:
+      # Get exception class from builtins
+      exc_cls = getattr(__builtins__, exc_type)
+    except AttributeError:
+      exc_cls = RuntimeError
+
+    # Raise it with original message, attach traceback
+    raise exc_cls(f"{exc_message}\nChild traceback:\n{tb}")
+
 
 
 class Lilota():
-  """High-level interface for task scheduling and execution.
+  """High-level interface for Lilota task scheduling and worker management.
 
-  This class coordinates a LilotaScheduler and LilotaWorker instance
-  to provide a unified API for registering, scheduling, and managing tasks.
+  The Lilota class coordinates a scheduler instance and a pool of worker
+  processes that execute user-defined task scripts.
 
-  Args:
-    db_url (str): Database connection URL.
-    node_heartbeat_interval (float, optional): Interval in seconds between
-      node heartbeats. Defaults to 5.
-    node_timeout_sec (int, optional): Time in seconds before a node is
-      considered inactive. Defaults to 20.
-    logging_level (int, optional): Logging level used by scheduler and worker.
-      Defaults to logging.DEBUG.
-    task_heartbeat_interval (float, optional): Initial interval in seconds
-      between task heartbeats. Defaults to 0.1.
-    max_task_heartbeat_interval (float, optional): Maximum interval in seconds
-      between task heartbeats. Defaults to 5.0.
-    set_progress_manually (bool, optional): Whether task progress must be
-      updated manually. Defaults to False.
+  A scheduler manages task persistence, distribution, and node heartbeats,
+  while worker processes execute tasks defined inside the provided script.
+
+  Workers are started as separate Python processes that run the provided
+  script file as a module entry point.
   """
 
-  def __init__(self, db_url: str, node_heartbeat_interval: float = 5, node_timeout_sec: int = 20, logging_level = logging.DEBUG, task_heartbeat_interval: float = 0.1, max_task_heartbeat_interval: float = 5.0, set_progress_manually: bool = False):
+  def __init__(self, db_url: str, script_path: str, number_of_workers: int = cpu_count(), scheduler_heartbeat_interval: float = 5, scheduler_timeout_sec: int = 20, process_manager_interval: float = 1.0, stop_worker_timeout: int = 60, logging_level = logging.INFO):
+    """Create a new Lilota runtime instance.
+
+    Args:
+      db_url (str):
+        Database connection URL used by the scheduler.
+
+      script_path (str):
+        Path to a Python script that defines and registers Lilota tasks.
+        Each worker process executes this script as its entry point.
+
+      number_of_workers (int, optional):
+        Number of worker processes to spawn. Defaults to the number of CPU cores.
+
+      scheduler_heartbeat_interval (float, optional):
+        Interval in seconds between scheduler node heartbeats.
+        Defaults to 5 seconds.
+
+      scheduler_timeout_sec (int, optional):
+        Time in seconds after which a node is considered inactive
+        if no heartbeat is received. Defaults to 20 seconds.
+
+      stop_worker_timeout (int, optional):
+        Maximum time in seconds to wait for worker processes to
+        exit gracefully before they are forcefully killed.
+        Defaults to 60 seconds.
+
+      logging_level (int, optional):
+        Logging level used by the scheduler. Defaults to logging.INFO.
+    """
     self._db_url = db_url
+    self._script_path = script_path
+    self._number_of_workers = number_of_workers
+    self._process_manager_interval = process_manager_interval
+    self._stop_worker_timeout = stop_worker_timeout
+    self._process_manager_thread: Thread = None
+    self._error_queue: Queue = None
+    self._processes: list[Process] = []
+    self._process_manager_heartbeat: Heartbeat = None
+    
     self._scheduler = LilotaScheduler(
       db_url=db_url,
-      node_heartbeat_interval=node_heartbeat_interval,
-      node_timeout_sec=node_timeout_sec,
+      node_heartbeat_interval=scheduler_heartbeat_interval,
+      node_timeout_sec=scheduler_timeout_sec,
       logging_level=logging_level
     )
-    self._worker = LilotaWorker(
-      db_url=db_url,
-      run_in_thread=True,
-      node_heartbeat_interval=node_heartbeat_interval,
-      node_timeout_sec=node_timeout_sec,
-      task_heartbeat_interval=task_heartbeat_interval,
-      max_task_heartbeat_interval=max_task_heartbeat_interval,
-      set_progress_manually=set_progress_manually,
-      logging_level=logging_level
-    )
+
+    self._node_store = SqlAlchemyNodeStore(self._db_url, None)
+    self._task_store = SqlAlchemyTaskStore(self._db_url, None)
     self._is_started = False
 
 
-  def _register(
-    self,
-    name: str,
-    func: Callable,
-    *,
-    input_model: Optional[Type[Any]] = None,
-    output_model: Optional[Type[Any]] = None,
-    task_progress: Optional[TaskProgress] = None
-  ):
-    self._worker._register(
-      name=name,
-      func=func,
-      input_model=input_model,
-      output_model=output_model,
-      task_progress=task_progress
-    )
-
-
-  def register(
-    self,
-    name: str,
-    *,
-    input_model=None,
-    output_model=None,
-    task_progress=None
-  ):
-    """Decorator for registering a task function.
-
-    This method allows task registration using decorator syntax.
-
-    Example:
-      @lilota.register("my_task")
-      def my_task(data):
-        return data
-
-    Args:
-      name (str): Unique name of the task.
-      input_model (Optional[Type[Any]]): Optional input validation model.
-      output_model (Optional[Type[Any]]): Optional output validation model.
-      task_progress (Optional[TaskProgress]): Task progress tracking strategy.
-
-    Returns:
-      Callable: A decorator that registers the function.
-    """
-    def decorator(func):
-      self._worker._register(
-        name=name,
-        func=func,
-        input_model=input_model,
-        output_model=output_model,
-        task_progress=task_progress
-      )
-      return func
-    return decorator
-
-
   def start(self):
-    """Start the scheduler and worker.
+    """Start the scheduler and spawn worker processes.
 
-    Initializes both the scheduler and worker components and updates
-    the internal started state.
+    This method:
+      1. Starts the Lilota scheduler.
+      2. Launches worker processes that execute the configured task script.
+      3. Monitors the started processes.
+
+    After startup, the instance is ready to schedule and process tasks.
     """
+    self._start_scheduler()
+    self._start_process_manager()
+    self._start_workers()
+    self._is_started = True
+
+
+  def _start_scheduler(self):
     self._scheduler.start()
-    self._worker.start()
-    self._is_started = self._scheduler._is_started and self._worker._is_started
+
+
+  def _start_workers(self):
+    # Start processes
+    for _ in range(self._number_of_workers):
+      p = Process(target=_run_script, args=(self._script_path, self._error_queue))
+      self._processes.append(p)
+      p.start()
+
+
+  def _start_process_manager(self):
+    # Create error queue
+    self._error_queue = Queue()
+
+    # Start the process manager
+    process_manager_task = ProcessManagerTask(
+      interval=self._process_manager_interval,
+      processes=self._processes,
+      error_queue=self._error_queue
+    )
+    self._process_manager_heartbeat = Heartbeat(f"process_manager", process_manager_task, None)
+    self._process_manager_heartbeat.start()
 
 
   def stop(self):
-    """Stop the scheduler and worker.
+    """Stop the scheduler and terminate all worker processes.
 
-    Gracefully stops both components and updates the internal started state.
+    Worker processes are first asked to terminate gracefully. If a worker
+    does not exit within ``stop_worker_timeout`` seconds, it will be
+    forcefully killed.
+
+    After completion, all worker processes are cleaned up and removed
+    from the internal process list.
     """
+    self._stop_scheduler()
+    self._stop_workers()
+    self._stop_process_manager()
+    self._is_started = False
+
+
+  def _stop_scheduler(self):
     self._scheduler.stop()
-    self._worker.stop()
-    self._is_started = self._scheduler._is_started and self._worker._is_started
+
+
+  def _stop_workers(self):
+    for p in self._processes:
+      if p.is_alive():
+        # Ask process to terminate nicely
+        p.terminate()
+
+    # Give them a chance to exit
+    for p in self._processes:
+      p.join(self._stop_worker_timeout)
+
+    # Force kill if still alive (usually not needed, but safe)
+    for p in self._processes:
+      if p.is_alive():
+        p.kill()
+        p.join()
+
+    # Remove all processes from the list
+    self._processes.clear()
+
+
+  def _stop_process_manager(self):
+    # Stop the process manager
+    if self._process_manager_heartbeat:
+      self._process_manager_heartbeat.stop_and_join(timeout=self._stop_worker_timeout)
+      self._process_manager_heartbeat = None
+
+    # Close the error queue
+    if self._error_queue:
+      self._error_queue.close()
+      self._error_queue.join_thread()
+      self._error_queue = None
+
+
+  def join(self):
+    """Block until all worker processes have finished.
+
+    This is typically used in long-running worker setups where the main
+    process should wait until workers exit.
+    """
+    for p in self._processes:
+      if p.is_alive():
+        p.join()
 
 
   def schedule(self, name: str, input: Any = None) -> int:
@@ -139,6 +300,16 @@ class Lilota():
     return self._scheduler.schedule(name, input)
   
 
+  def get_all_nodes(self) -> list[Node]:
+    """Retrieve all registered scheduler nodes.
+
+    Returns:
+        list[Node]: A list containing all nodes currently stored in the
+        node store.
+    """
+    return self._node_store.get_all_nodes()
+
+
   def get_task_by_id(self, id: UUID):
     """Retrieve a task by its unique identifier.
 
@@ -148,5 +319,5 @@ class Lilota():
     Returns:
       Any: Task object associated with the given ID.
     """
-    return self._scheduler.get_task_by_id(id)
+    return self._task_store.get_task_by_id(id)
   

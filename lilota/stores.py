@@ -56,7 +56,7 @@ class SqlAlchemyNodeStore(StoreBase):
     super().__init__(db_url, logger)
 
 
-  def create_node(self, type: NodeType, status: NodeStatus = NodeStatus.STARTING) -> UUID:
+  def create_node(self, type: NodeType, status: NodeStatus = NodeStatus.IDLE) -> UUID:
     """Create a new node record in the database.
 
     Args:
@@ -447,7 +447,8 @@ class SqlAlchemyNodeLeaderStore(StoreBase):
 
       if result.rowcount == 1:
         session.commit()
-        self._logger.debug(f"Leadership acquired (new node id: {node_id})")
+        if self._logger:
+          self._logger.debug(f"Leadership acquired (new node id: {node_id})")
         return True
 
       # Check if row exists
@@ -468,7 +469,8 @@ class SqlAlchemyNodeLeaderStore(StoreBase):
         )
       )
       session.commit()
-      self._logger.debug(f"Leadership acquired first time (node id: {node_id})")
+      if self._logger:
+        self._logger.debug(f"Leadership acquired first time (node id: {node_id})")
       return True
     except IntegrityError:
         # Someone else won the race to insert
@@ -476,7 +478,8 @@ class SqlAlchemyNodeLeaderStore(StoreBase):
         return False
     except Exception:
         session.rollback()
-        self._logger.exception("Leader election failed")
+        if self._logger:
+          self._logger.exception("Leader election failed")
         return False
     finally:
         session.close()
@@ -503,7 +506,7 @@ class SqlAlchemyNodeLeaderStore(StoreBase):
 
       session.commit()
       renewed = result.rowcount == 1
-      if renewed:
+      if renewed and self._logger:
         self._logger.debug(f"Leadership renewed (node id: {node_id})")
       return renewed
     

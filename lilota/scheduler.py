@@ -78,3 +78,12 @@ class LilotaScheduler(LilotaNode):
     """
     self._logger.debug(f"Create task (name: '{name}', input: {input})")
     return self._task_store.create_task(name, input)
+
+
+  def has_unfinished_tasks(self):
+    """Check whether there are unfinished tasks in the system.
+
+    Returns:
+      bool: True if unfinished tasks exist, otherwise False.
+    """
+    return self._task_store.has_unfinished_tasks()
