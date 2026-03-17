@@ -30,4 +30,4 @@ Workers can run:
 
 All nodes communicate through the shared database.
 
-For many applications this setup is sufficient. However, some scenarios require horizontal scaling. In these cases, multiple **lilota** instances can run across several servers. They still connect then to the same database.
+For many applications this setup is sufficient. However, some scenarios require horizontal scaling. In these cases, multiple **Lilota** instances can run across several servers. They still connect then to the same database.

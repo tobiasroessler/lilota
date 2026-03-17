@@ -3,7 +3,7 @@
 **lilota** is a lightweight Python library for executing long-running
 tasks in the background without the overhead of full-fledged task queue
 systems. While those tools are powerful and 
-valuable, lilota focuses on scenarios where a simpler approach is sufficient.
+valuable, **lilota** focuses on scenarios where a simpler approach is sufficient.
 
 It is designed for simple, asynchronous task execution with minimal
 setup and overhead.
@@ -16,7 +16,7 @@ setup and overhead.
     - [myscript.py](#myscriptpy)
       - [Create a worker instance](#create-a-worker-instance)
       - [Register a background task](#register-a-background-task)
-    - [Integration of **Lilota**](#integration-of-lilota)
+    - [Integration of lilota](#integration-of-lilota)
       - [Define input and output models](#define-input-and-output-models)
       - [Create a Lilota instance](#create-a-lilota-instance)
       - [Start lilota](#start-lilota)
@@ -45,7 +45,7 @@ such as:
 -   sending emails
 -   heavy computations
 
-Instead of blocking the request, lilota lets you start the task in the
+Instead of blocking the request, **lilota** lets you start the task in the
 background.
 
 
@@ -64,7 +64,7 @@ This could, of course, also be a function that generates a report or performs
 a heavy computation. For simplicity, we will just add two numbers.
 
 First, we have to create a script that has an instance of a worker (**LilotaWorker**). This worker
-registers one or several tasks that can be executed later on by a scheduler. 
+registers one or several task-functions that can be executed later by a scheduler. 
 
 
 ### myscript.py
@@ -86,8 +86,7 @@ class AddOutput():
 
 
 worker = LilotaWorker(
-  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample",
-  max_task_heartbeat_interval=0.1
+  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample"
 )
 
 
@@ -103,6 +102,7 @@ def main():
 if __name__ == "__main__":
   main()
 ```
+
 
 #### Create a worker instance
 
@@ -125,10 +125,14 @@ def add(data: AddInput) -> AddOutput:
 ```
 
 
-### Integration of **Lilota**
+### Integration of lilota
 
-The script we created above is passed to a **Lilota** instance and executed. The **Lilota** instance 
-can start several processes and every process executed that script once.
+The script created above is passed to a **Lilota** instance for execution. 
+
+That instance can start multiple processes, each of which executes the script once. You can specify the number of workers for a **Lilota** instance. By default, it is set to **cpu_count()**.
+
+In this example, we use two model classes: one for input arguments and one for the output.
+These models should typically be defined in their own module and shared between **Lilota** and **LilotaWorker**.
 
 ``` python
 from dataclasses import dataclass
@@ -177,10 +181,6 @@ if __name__ == "__main__":
   main()
 ```
 
-In this example we use two model classes. One for input arguments and one for the output.
-Normally these models should be in their own module and used by **Lilota** and by the 
-**LilotaWorker**.
-
 
 #### Define input and output models
 
@@ -224,8 +224,7 @@ task_id = lilota.schedule("add", AddInput(a=2, b=3))
 ```
 
 The **schedule** function creates a task entry in the database and starts
-executing it immediately.
-The ID of the stored task is returned.
+executing it immediately. The ID of the stored task is returned.
 
 
 #### Retrieve task information including the output (if available)
