@@ -245,8 +245,8 @@ print(add_output.sum)
 
 | Example | URL |
 | ------- | ----- |
-| A simple "Hello World" example | [1-hello-world.py](https://github.com/tobiasroessler/lilota-sample/blob/main/src/1-hello-world.py) |
-| Add two numbers using an input and an output model | [2-add-two-numbers.py](https://github.com/tobiasroessler/lilota-sample/blob/main/src/2-add-two-numbers.py) |
-| Add two numbers using a pydantic input and an output model | [3-add-two-numbers-using-pydantic.py](https://github.com/tobiasroessler/lilota-sample/blob/main/src/3-add-two-numbers-using-pydantic.py) |
-| Database access inside the task function | [4-using-db-inside-task.py](https://github.com/tobiasroessler/lilota-sample/blob/main/src/4-using-db-inside-task.py) |
-| Set the task progress manually in a task function | [5-setting-task-progress-manually.py](https://github.com/tobiasroessler/lilota-sample/blob/main/src/5-setting-task-progress-manually.py) |
+| A simple "Hello World" example | [1-hello-world.py](https://github.com/tobiasroessler/lilota-sample/blob/main/src/1-hello-world) |
+| Add two numbers using an input and an output model | [2-add-two-numbers.py](https://github.com/tobiasroessler/lilota-sample/blob/main/src/2-add-two-numbers) |
+| Add two numbers using a pydantic input and an output model | [3-add-two-numbers-using-pydantic.py](https://github.com/tobiasroessler/lilota-sample/blob/main/src/3-add-two-numbers-using-pydantic) |
+| Database access inside the task function | [4-using-db-inside-task.py](https://github.com/tobiasroessler/lilota-sample/blob/main/src/4-using-db-inside-task) |
+| Set the task progress manually in a task function | [5-setting-task-progress-manually.py](https://github.com/tobiasroessler/lilota-sample/blob/main/src/5-setting-task-progress-manually) |
