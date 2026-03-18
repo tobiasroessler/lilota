@@ -1,5 +1,5 @@
 from typing import Any, Callable, Type, TypeVar, Optional, Any, Protocol, runtime_checkable
-from sqlalchemy import Integer, String, Text, DateTime, Interval, JSON, CheckConstraint, Index
+from sqlalchemy import Integer, String, Text, DateTime, JSON, CheckConstraint, Index
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column
 from datetime import datetime, timezone, timedelta
 from dataclasses import is_dataclass, asdict
@@ -17,6 +17,7 @@ class TaskStatus(StrEnum):
   RUNNING = "running"
   COMPLETED = "completed"
   FAILED = "failed"
+  EXPIRED = "expired"
   CANCELLED = "cancelled"
 
 
@@ -182,11 +183,13 @@ class Node(Base):
   type: Mapped[str] = mapped_column(String(32), nullable=False)
   status: Mapped[str] = mapped_column(String(32), nullable=False)
   created_at: Mapped[datetime] = mapped_column(
-    DateTime, default=lambda: datetime.now(timezone.utc),
+    DateTime(timezone=True), 
+    default=lambda: datetime.now(timezone.utc),
     nullable=False
   )
   last_seen_at: Mapped[datetime] = mapped_column(
-    DateTime, default=lambda: datetime.now(timezone.utc),
+    DateTime(timezone=True), 
+    default=lambda: datetime.now(timezone.utc),
     nullable=False
   )
 
@@ -224,25 +227,25 @@ class Task(Base):
     index=False
   )
   run_at: Mapped[datetime] = mapped_column(
-    DateTime, 
+    DateTime(timezone=True), 
     nullable=False,
     default=lambda: datetime.now(timezone.utc)
   )
   attempts: Mapped[int] = mapped_column(nullable=False, default=0)
   max_attempts: Mapped[int] = mapped_column(nullable=False, default=1)
-  timeout: Mapped[timedelta | None] = mapped_column(Interval, nullable=True, default=None)
+  expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
   progress_percentage: Mapped[int] = mapped_column(default=0)
-  start_date_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
-  end_date_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+  start_date_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+  end_date_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
   input: Mapped[Any | None] = mapped_column(JSON)
   output: Mapped[Any | None] = mapped_column(JSON)
   error: Mapped[Any | None] = mapped_column(JSON)
   locked_by: Mapped[UUID | None] = mapped_column(default=None)
-  locked_at: Mapped[datetime | None] = mapped_column(nullable=True, default=None)
+  locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
 
   __table_args__ = (
     CheckConstraint(
-      "status IN ('created', 'scheduled', 'running', 'completed', 'failed', 'cancelled')",
+      "status IN ('created', 'scheduled', 'running', 'completed', 'failed', 'expired', 'cancelled')",
       name="lilota_task_status_check"
     ),
     Index("idx_get_next_task", "status", "run_at"),

@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: c5e580a3955e
+Revision ID: 6cbccedc1c4d
 Revises: 
-Create Date: 2026-02-28 23:59:07.439124
+Create Date: 2026-03-19 00:32:13.586004
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'c5e580a3955e'
+revision: str = '6cbccedc1c4d'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -38,8 +38,8 @@ def upgrade() -> None:
     sa.Column('name', sa.String(length=255), nullable=True),
     sa.Column('type', sa.String(length=32), nullable=False),
     sa.Column('status', sa.String(length=32), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
-    sa.Column('last_seen_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('last_seen_at', sa.DateTime(timezone=True), nullable=False),
     sa.CheckConstraint("status IN ('idle', 'starting', 'running', 'stopping', 'stopped', 'crashed', 'dead')", name='lilota_note_status_check'),
     sa.CheckConstraint("type IN ('scheduler', 'worker')", name='lilota_note_type_check'),
     sa.PrimaryKeyConstraint('id')
@@ -55,19 +55,19 @@ def upgrade() -> None:
     sa.Column('name', sa.String(), nullable=False),
     sa.Column('pid', sa.Integer(), nullable=False),
     sa.Column('status', sa.String(length=32), nullable=False),
-    sa.Column('run_at', sa.DateTime(), nullable=False),
+    sa.Column('run_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('attempts', sa.Integer(), nullable=False),
     sa.Column('max_attempts', sa.Integer(), nullable=False),
-    sa.Column('timeout', sa.Interval(), nullable=True),
+    sa.Column('expires_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('progress_percentage', sa.Integer(), nullable=False),
-    sa.Column('start_date_time', sa.DateTime(), nullable=True),
-    sa.Column('end_date_time', sa.DateTime(), nullable=True),
+    sa.Column('start_date_time', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('end_date_time', sa.DateTime(timezone=True), nullable=True),
     sa.Column('input', sa.JSON(), nullable=True),
     sa.Column('output', sa.JSON(), nullable=True),
     sa.Column('error', sa.JSON(), nullable=True),
     sa.Column('locked_by', sa.Uuid(), nullable=True),
-    sa.Column('locked_at', sa.DateTime(), nullable=True),
-    sa.CheckConstraint("status IN ('created', 'scheduled', 'running', 'completed', 'failed', 'cancelled')", name='lilota_task_status_check'),
+    sa.Column('locked_at', sa.DateTime(timezone=True), nullable=True),
+    sa.CheckConstraint("status IN ('created', 'scheduled', 'running', 'completed', 'failed', 'expired', 'cancelled')", name='lilota_task_status_check'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index('idx_get_next_task', 'lilota_task', ['status', 'run_at'], unique=False)
