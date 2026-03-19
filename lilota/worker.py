@@ -1,12 +1,15 @@
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Type, Optional, Any
 from lilota.node import LilotaNode, NodeHeartbeatTask
-from lilota.models import NodeType, TaskProgress, RegisteredTask
+from lilota.models import NodeType, Task, TaskProgress, RegisteredTask
 from lilota.logging import create_context_logger
 from lilota.stores import SqlAlchemyNodeStore, SqlAlchemyNodeLeaderStore
 from lilota.heartbeat import Heartbeat
 from lilota.utils import exception_to_dict, error_to_dict
 import logging
+import os
+import signal
+import threading
 import time
 
 
@@ -242,7 +245,7 @@ class LilotaWorker(LilotaNode):
         interval = 0.1
 
         # Configure logging
-        logger = create_context_logger(self._logger, node_id=self._node_id, task_id=task_id)
+        logger: logging.Logger = create_context_logger(self._logger, node_id=self._node_id, task_id=task_id)
 
         # Get the registered task
         registered_task = self._registry.get(task.name)
@@ -262,8 +265,8 @@ class LilotaWorker(LilotaNode):
             if registered_task.task_progress is not None:
               task_progress = TaskProgress(task_id, self._task_store.set_progress)
 
-            # Call the function
-            result = registered_task(started_task.input, task_progress)
+            # Run task
+            result = self._execute_task_with_watchdog(started_task, registered_task, task_progress, logger)
 
             # Set status to completed
             self._task_store.end_task_success(task_id, result)
@@ -277,6 +280,26 @@ class LilotaWorker(LilotaNode):
 
       # Sleep
       time.sleep(interval)
+
+
+  def _execute_task_with_watchdog(self, task: Task, registered_task: RegisteredTask, task_progress: TaskProgress, logger: logging.Logger):
+    return registered_task(task.input, task_progress)
+
+
+  def _calculate_timer_and_set_watchdog(self, task: Task, logger: logging.Logger) -> threading.Timer:
+    timeout: float = max(0, (task.expires_at - datetime.now(timezone.utc)).total_seconds())
+
+    def watchdog():
+      # Log that process will be killed
+      logger.warning(f"The process is killed because task '{task.name}' ({task.id}) expired")
+      for handler in logger.handlers:
+        handler.flush()
+
+      # Kill the worker process
+      os.kill(os.getpid(), signal.SIGKILL)
+
+    timer = threading.Timer(timeout, watchdog)
+    timer.start()
 
 
   def _on_stop(self):

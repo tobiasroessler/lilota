@@ -1,5 +1,5 @@
 from typing import Any, Callable, Type, TypeVar, Optional, Any, Protocol, runtime_checkable
-from sqlalchemy import Integer, String, Text, DateTime, JSON, CheckConstraint, Index
+from sqlalchemy import Integer, String, Text, DateTime, Interval, JSON, CheckConstraint, Index
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column
 from datetime import datetime, timezone, timedelta
 from dataclasses import is_dataclass, asdict
@@ -233,6 +233,7 @@ class Task(Base):
   )
   attempts: Mapped[int] = mapped_column(nullable=False, default=0)
   max_attempts: Mapped[int] = mapped_column(nullable=False, default=1)
+  timeout: Mapped[timedelta | None] = mapped_column(Interval, nullable=True, default=None)
   expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
   progress_percentage: Mapped[int] = mapped_column(default=0)
   start_date_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)

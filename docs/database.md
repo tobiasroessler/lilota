@@ -43,6 +43,7 @@ This table stores information about the tasks executed by the system.
 | `run_at`              | Timestamp indicating when the task becomes eligible for execution.                                  |
 | `attempts`            | Number of execution attempts made for this task.                                                    |
 | `max_attempts`        | Maximum allowed retry attempts before the task is marked as failed.                                 |
+| `timeout`             | Maximum execution duration allowed for the task before it should be considered timed out.           |
 | `expires_at`          | Optional timestamp (UTC) after which the task is considered expired and should no longer be executed.          |
 | `progress_percentage` | Current progress of the task expressed as a percentage (0–100).                                     |
 | `start_date_time`     | Timestamp when the task started execution.                                                          |
