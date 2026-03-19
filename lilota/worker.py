@@ -283,7 +283,14 @@ class LilotaWorker(LilotaNode):
 
 
   def _execute_task_with_watchdog(self, task: Task, registered_task: RegisteredTask, task_progress: TaskProgress, logger: logging.Logger):
-    return registered_task(task.input, task_progress)
+    if task.expires_at is None:
+      return registered_task(task.input, task_progress)
+    
+    timer = self._calculate_timer_and_set_watchdog(task, logger)
+    try:
+      return registered_task(task.input, task_progress)
+    finally:
+      timer.cancel()
 
 
   def _calculate_timer_and_set_watchdog(self, task: Task, logger: logging.Logger) -> threading.Timer:
