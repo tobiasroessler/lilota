@@ -150,7 +150,8 @@ class LilotaWorker(LilotaNode):
     *,
     input_model: Optional[Type[Any]] = None,
     output_model: Optional[Type[Any]] = None,
-    task_progress: Optional[TaskProgress] = None
+    task_progress: Optional[TaskProgress] = None,
+    timeout: Optional[timedelta] = None
   ):
     if self._is_started:
       raise Exception("It is not allowed to register functions after startup. Stop by using the stop() method.")
@@ -166,7 +167,8 @@ class LilotaWorker(LilotaNode):
       func=func,
       input_model=input_model,
       output_model=output_model,
-      task_progress=task_progress
+      task_progress=task_progress,
+      timeout=timeout
     )
 
     self._registry[name] = task
@@ -178,7 +180,8 @@ class LilotaWorker(LilotaNode):
     *,
     input_model=None,
     output_model=None,
-    task_progress=None
+    task_progress=None,
+    timeout=timedelta(minutes=5)
   ):
     """Decorator for registering a task function.
 
@@ -194,6 +197,7 @@ class LilotaWorker(LilotaNode):
       input_model (Optional[Type[Any]]): Optional input validation model.
       output_model (Optional[Type[Any]]): Optional output validation model.
       task_progress (Optional[TaskProgress]): Task progress tracking strategy.
+      timeout (Optional[timedelta]): Optional timeout that can be set for a task.
 
     Returns:
       Callable: A decorator that registers the function.
@@ -204,7 +208,8 @@ class LilotaWorker(LilotaNode):
         func=func,
         input_model=input_model,
         output_model=output_model,
-        task_progress=task_progress
+        task_progress=task_progress,
+        timeout=timeout
       )
       return func
     return decorator
@@ -258,7 +263,8 @@ class LilotaWorker(LilotaNode):
           # Execute the task
           try:
             # Set status to running
-            started_task = self._task_store.start_task(task_id)
+            timeout = registered_task.timeout
+            started_task = self._task_store.start_task(task_id, timeout)
 
             # Set task_progress object if available
             task_progress: TaskProgress = None 
@@ -298,15 +304,14 @@ class LilotaWorker(LilotaNode):
 
     def watchdog():
       # Log that process will be killed
-      logger.warning(f"The process is killed because task '{task.name}' ({task.id}) expired")
-      for handler in logger.handlers:
-        handler.flush()
+      logger.error(f"The process will be stopped because the task '{task.name}' ({task.id}) has expired")
 
       # Kill the worker process
       os.kill(os.getpid(), signal.SIGKILL)
 
     timer = threading.Timer(timeout, watchdog)
     timer.start()
+    return timer
 
 
   def _on_stop(self):

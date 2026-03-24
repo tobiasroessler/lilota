@@ -30,6 +30,11 @@ def add(data: AddInput) -> AddOutput:
   return AddOutput(sum=data.a + data.b)
 
 
+def infinite_loop() -> None:
+  while True:
+    pass
+
+
 
 class LilotaWorkerTestCase(TestCase):
 

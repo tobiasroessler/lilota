@@ -1,7 +1,7 @@
 from typing import Any, Callable, Type, TypeVar, Optional, Any, Protocol, runtime_checkable
 from sqlalchemy import Integer, String, Text, DateTime, JSON, CheckConstraint, Index
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dataclasses import is_dataclass, asdict
 from enum import StrEnum
 from uuid import UUID, uuid4
@@ -98,13 +98,15 @@ class RegisteredTask:
     output_model (Optional[Type]): Optional output model used to
       serialize the task result.
     task_progress (Optional[TaskProgress]): Optional progress helper.
+    timeout (Optional[timedelta]): Optional timeout that can be set for a task.
   """
 
-  def __init__(self, func: Callable, input_model: Optional[Type], output_model: Optional[Type], task_progress: Optional[TaskProgress]):
+  def __init__(self, func: Callable, input_model: Optional[Type], output_model: Optional[Type], task_progress: Optional[TaskProgress], timeout: Optional[timedelta]):
     self.func = func
     self.input_model = input_model
     self.output_model = output_model
     self.task_progress = task_progress
+    self.timeout = timeout
 
 
   def __call__(self, raw_input: Any, task_progress: TaskProgress):

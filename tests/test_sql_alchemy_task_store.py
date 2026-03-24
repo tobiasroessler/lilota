@@ -144,6 +144,77 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
     self.assertEqual(next_task.id, task2_id)
 
 
+  def test_start_task___with_no_timeout___should_not_set_expires_at_and_timeout(self):
+    # Arrange
+    logger = logging.getLogger("test_logger")
+    task_id: Task = self.create_task(Task(
+      name="test",
+      status=TaskStatus.CREATED,
+      run_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+      timeout=None
+    ))
+    store = SqlAlchemyTaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+
+    # Act
+    task: Task = store.start_task(task_id)
+
+    # Assert
+    self.assertGreater(task.pid, 0)
+    self.assertEqual(task.status, TaskStatus.RUNNING)
+    self.assertEqual(task.progress_percentage, 0)
+    self.assertIsNone(task.timeout)
+    self.assertIsNotNone(task.start_date_time)
+    self.assertIsNone(task.expires_at)
+    self.assertIsNone(task.end_date_time)
+
+
+  def test_start_task___with_timeout_of_5_minutes___should_set_expires_at_correctly(self):
+    # Arrange
+    logger = logging.getLogger("test_logger")
+    timeout_in_sec = 300
+    task_id: Task = self.create_task(Task(
+      name="test",
+      status=TaskStatus.CREATED,
+      run_at=datetime.now(timezone.utc) + timedelta(minutes=5)
+    ))
+    store = SqlAlchemyTaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+
+    # Act
+    task: Task = store.start_task(task_id, timedelta(seconds=timeout_in_sec))
+
+    # Assert
+    self.assertGreater(task.pid, 0)
+    self.assertEqual(task.status, TaskStatus.RUNNING)
+    self.assertEqual(task.progress_percentage, 0)
+    self.assertEqual(task.timeout, timeout_in_sec)
+    self.assertIsNotNone(task.start_date_time)
+    self.assertEqual(task.expires_at, task.start_date_time + timedelta(seconds=task.timeout))
+    self.assertIsNone(task.end_date_time)
+
+
+  def test_start_task___with_no_timeout___should_not_set_timeout(self):
+    # Arrange
+    logger = logging.getLogger("test_logger")
+    task_id: Task = self.create_task(Task(
+      name="test",
+      status=TaskStatus.CREATED,
+      run_at=datetime.now(timezone.utc) + timedelta(minutes=5)
+    ))
+    store = SqlAlchemyTaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+
+    # Act
+    task: Task = store.start_task(task_id, None)
+
+    # Assert
+    self.assertGreater(task.pid, 0)
+    self.assertEqual(task.status, TaskStatus.RUNNING)
+    self.assertEqual(task.progress_percentage, 0)
+    self.assertIsNone(task.timeout)
+    self.assertIsNotNone(task.start_date_time)
+    self.assertIsNone(task.expires_at)
+    self.assertIsNone(task.end_date_time)
+
+
   def delete_all_tasks(self):
     with SqlAlchemyTaskStoreTestCase.get_session() as session:
       session.query(Task).delete()

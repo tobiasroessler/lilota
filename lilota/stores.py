@@ -274,22 +274,33 @@ class SqlAlchemyTaskStore(StoreBase):
       return session.get(Task, task_id)
 
 
-  def start_task(self, id: UUID) -> Task:
+  def start_task(self, id: UUID, timeout: timedelta | None = None) -> Task:
     """Mark a task as RUNNING and initialize metadata.
 
     Args:
         id (UUID): Id of the task.
+        timeout (timedelta | None): Optional timeout that can be set for a task.
 
     Returns:
         Task | None: The started task, or None if no task is available.
     """
+    expires_at = None
+    start_date_time = datetime.now(timezone.utc)
+    timeout_sec = int(timeout.total_seconds()) if timeout is not None else None
+
     with self._get_session() as session:
       with session.begin():
         task = self._load_task(session, id)
+        task.timeout = timeout_sec
+
+        if timeout is not None:
+          expires_at = start_date_time + timeout
+
         task.pid = os.getpid()
         task.status = TaskStatus.RUNNING
         task.progress_percentage = 0
-        task.start_date_time = datetime.now(timezone.utc)
+        task.start_date_time = start_date_time
+        task.expires_at = expires_at
         task.end_date_time = None
         return task
 

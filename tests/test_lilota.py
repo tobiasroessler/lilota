@@ -12,6 +12,7 @@ from lilota.core import Lilota
 from lilota.models import Node, NodeLeader, Task, TaskStatus, LogEntry, NodeType
 from lilota.db.alembic import get_alembic_config
 from lilota.stores import SqlAlchemyLogStore
+from lilota.worker import LilotaWorker
 import time
 
 
@@ -141,7 +142,7 @@ class LilotaTestCase(TestCase):
 
     # Assert
     try:
-      self.sleep()
+      self.sleep(seconds=1)
       task = lilota.get_task_by_id(id)
       self.assertEqual(task.status, TaskStatus.COMPLETED)
       self.assertIsNone(task.error)
@@ -521,6 +522,39 @@ class LilotaTestCase(TestCase):
         leadership_acquired = True
 
       self.assertTrue(leadership_acquired)
+    finally:
+      lilota.stop()
+
+
+  def test_timeout___when_having_an_infinite_loop___should_stop_worker(self):
+    # Arrange
+    lilota = Lilota(
+      db_url=LilotaTestCase.DB_URL,
+      script_path="tests/scripts/infinite_loop_test_script.py",
+      number_of_workers=1,
+      logging_level=logging.DEBUG
+    )
+    log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaTestCase.DB_URL)
+    lilota.start()
+    self.assertTrue(lilota._processes[0].is_alive())
+
+    # Act
+    try:
+      task_id = lilota.schedule("infinite_loop")
+    except:
+      lilota.stop()
+
+    # Assert
+    self.sleep(2)
+    
+    try:
+      self.assertFalse(lilota._processes[0].is_alive())
+      worker: LilotaWorker = [n for n in lilota.get_all_nodes() if n.type == NodeType.WORKER][0]
+      self.assertIsNotNone(worker)
+      log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(worker.id)
+      self.assertEqual(len(log_entries), 1)
+      self.assertEqual(log_entries[0].message, f"The process will be stopped because the task 'infinite_loop' ({task_id}) has expired")
+      self.assertEqual(log_entries[0].level, "ERROR")
     finally:
       lilota.stop()
 
