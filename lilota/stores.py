@@ -115,7 +115,7 @@ class SqlAlchemyNodeStore(StoreBase):
         session.execute(stmt)
 
 
-  def update_nodes_status_on_dead_nodes(self, cutoff: datetime, exclude_node_id: UUID):
+  def update_status_on_dead_nodes(self, cutoff: datetime, exclude_node_id: UUID):
     """Mark nodes as DEAD if their last_seen_at is older than cutoff.
 
     Args:

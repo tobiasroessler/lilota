@@ -53,12 +53,12 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
 
     # Try to set leader and the leader should trigger a cleanup
     try:
-      self._try_set_leader_and_cleanup()
+      self._try_set_leader_and_run_maintenance()
     except Exception:
       self._logger.exception("Leader election failed")
 
 
-  def _try_set_leader_and_cleanup(self):
+  def _try_set_leader_and_run_maintenance(self):
     # Try to renew leadership
     if self._is_leader:
       self._is_leader = self._node_leader_store.renew_leadership(self._node_id)
@@ -72,19 +72,22 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
 
     # Leader-only work
     if self._is_leader:
-      self._cleanup()
+      self._run_maintenance()
 
 
-  def _cleanup(self) -> None:
-    cutoff = datetime.now(timezone.utc) - timedelta(seconds=self._node_timeout_sec)
-
+  def _run_maintenance(self) -> None:
     try:
-      cleaned = self._node_store.update_nodes_status_on_dead_nodes(cutoff, self._node_id)
-      if cleaned > 0:
-        self._logger.debug(f"Marked {cleaned} stale node(s) as DEAD")
+      self._update_status_on_dead_nodes()
     except Exception:
-      # Never let cleanup kill the heartbeat thread
-      self._logger.exception("Node cleanup failed")
+      # Never let maintenance kill the heartbeat thread
+      self._logger.exception("Node maintenance failed")
+
+
+  def _update_status_on_dead_nodes(self):
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=self._node_timeout_sec)
+    cleaned = self._node_store.update_status_on_dead_nodes(cutoff, self._node_id)
+    if cleaned > 0:
+      self._logger.debug(f"Marked {cleaned} stale node(s) as DEAD")
 
 
 
