@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: 68f5ce4d0dd7
+Revision ID: 774ab06543ba
 Revises: 
-Create Date: 2026-03-19 02:15:51.682546
+Create Date: 2026-03-28 22:52:32.842005
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '68f5ce4d0dd7'
+revision: str = '774ab06543ba'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -58,6 +58,7 @@ def upgrade() -> None:
     sa.Column('run_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('attempts', sa.Integer(), nullable=False),
     sa.Column('max_attempts', sa.Integer(), nullable=False),
+    sa.Column('previous_task_id', sa.Uuid(), nullable=True),
     sa.Column('timeout', sa.Integer(), nullable=True),
     sa.Column('expires_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('progress_percentage', sa.Integer(), nullable=False),

@@ -235,6 +235,7 @@ class Task(Base):
   )
   attempts: Mapped[int] = mapped_column(nullable=False, default=0)
   max_attempts: Mapped[int] = mapped_column(nullable=False, default=1)
+  previous_task_id: Mapped[UUID] = mapped_column(nullable=True, default=None)
   timeout: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
   expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
   progress_percentage: Mapped[int] = mapped_column(default=0)
