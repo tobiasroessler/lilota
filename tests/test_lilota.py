@@ -8,12 +8,13 @@ from unittest import TestCase, main
 from typing import Any
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from lilota.core import Lilota
+from lilota.core import Lilota, WorkerProcess
 from lilota.models import Node, NodeLeader, Task, TaskStatus, LogEntry, NodeType
 from lilota.db.alembic import get_alembic_config
 from lilota.stores import SqlAlchemyLogStore
 from lilota.worker import LilotaWorker
 import time
+from uuid import UUID
 
 
 class AddInput():
@@ -114,7 +115,7 @@ class LilotaTestCase(TestCase):
       self.assertEqual(len(lilota._processes), 8)
       for p in lilota._processes:
         self.assertTrue(p.is_alive())
-    except Exception:
+    except Exception as ex:
       lilota.stop()
 
     # Act
@@ -536,10 +537,15 @@ class LilotaTestCase(TestCase):
     )
     log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaTestCase.DB_URL)
     lilota.start()
-    self.assertTrue(lilota._processes[0].is_alive())
+    process: WorkerProcess = None
+    process_id: UUID = None
 
     # Act
     try:
+      process = lilota._processes[0]
+      process_id = process.id
+      self.assertIsNotNone(process)
+      self.assertTrue(process.is_alive())
       task_id = lilota.schedule("infinite_loop")
     except:
       lilota.stop()
@@ -548,7 +554,9 @@ class LilotaTestCase(TestCase):
     self.sleep(2)
     
     try:
-      self.assertFalse(lilota._processes[0].is_alive())
+      new_process = lilota._processes[0]
+      self.assertNotEqual(new_process.id, process_id)
+      self.assertIsNone(new_process.exitcode)
       worker: LilotaWorker = [n for n in lilota.get_all_nodes() if n.type == NodeType.WORKER][0]
       self.assertIsNotNone(worker)
       log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(worker.id)

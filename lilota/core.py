@@ -5,15 +5,13 @@ from lilota.models import Node
 from lilota.scheduler import LilotaScheduler
 from lilota.stores import SqlAlchemyNodeStore, SqlAlchemyTaskStore
 import logging
-from multiprocessing import cpu_count, Process, Queue
+from multiprocessing import cpu_count, Queue, Process
 import os
 from queue import Empty
 import sys
 import traceback
-from threading import Thread
-from typing import Any
-from uuid import UUID
-import time
+from typing import Any, Callable
+from uuid import UUID, uuid4
 
 
 
@@ -35,6 +33,14 @@ def _run_script(script_path: str, error_queue: Queue) -> None:
 
 
 
+class WorkerProcess(Process):
+
+  def __init__(self, id: UUID, group = None, target = None, name = None, args = (), kwargs = {}, *, daemon = None):
+    super().__init__(group, target, name, args, kwargs, daemon=daemon)
+    self.id = id
+
+
+
 class ProcessManagerTask(HeartbeatTask):
   """
   Periodic task responsible for monitoring child processes and propagating
@@ -45,7 +51,7 @@ class ProcessManagerTask(HeartbeatTask):
   in the parent process context so it can be handled or terminate execution.
   """
 
-  def __init__(self, interval: float, processes: list[Process], error_queue: Queue):
+  def __init__(self, interval: float, processes: list[Process], error_queue: Queue, process_factory: Callable[[], WorkerProcess]):
     """
     Initialize the process manager task.
 
@@ -55,10 +61,13 @@ class ProcessManagerTask(HeartbeatTask):
         error_queue (Queue): Queue used by child processes to report
             exceptions back to the parent process. Each entry is expected
             to contain a dictionary with exception metadata.
+        process_factory (Callable[[], Process]): Function that creates a new worker
+            process and returns it.
     """
     super().__init__(interval)
-    self._processes: list[Process] = processes
+    self._processes: list[WorkerProcess] = processes
     self._error_queue: Queue = error_queue
+    self._process_factory = process_factory
 
 
   def execute(self):
@@ -68,14 +77,27 @@ class ProcessManagerTask(HeartbeatTask):
     Attempts to retrieve an error report from the error queue without
     blocking. If an error is present, it will be reconstructed and raised
     in the parent process via `raise_child_exception`.
-
-    If the queue is empty, the method silently returns.
+    The processes are also monitored. If a process is no longer alive, 
+    it is removed from the list and a new worker process is started.
     """
+    self._retrieve_error()
+    self._monitor_processes()
+
+
+  def _retrieve_error(self):
     try:
       error = self._error_queue.get_nowait()
       self.raise_child_exception(error)
     except Empty:
       pass
+
+
+  def _monitor_processes(self):
+    for i, p in enumerate(self._processes):
+      if p.exitcode is not None:
+        new_process = self._process_factory()
+        self._processes[i] = new_process
+        new_process.start()
     
 
   def raise_child_exception(self, error_info):
@@ -164,9 +186,8 @@ class Lilota():
     self._number_of_workers = number_of_workers
     self._process_manager_interval = process_manager_interval
     self._stop_worker_timeout = stop_worker_timeout
-    self._process_manager_thread: Thread = None
     self._error_queue: Queue = None
-    self._processes: list[Process] = []
+    self._processes: list[WorkerProcess] = []
     self._process_manager_heartbeat: Heartbeat = None
     
     self._scheduler = LilotaScheduler(
@@ -191,9 +212,10 @@ class Lilota():
 
     After startup, the instance is ready to schedule and process tasks.
     """
+    self._error_queue = Queue()
     self._start_scheduler()
-    self._start_process_manager()
     self._start_workers()
+    self._start_process_manager()
     self._is_started = True
 
 
@@ -204,20 +226,26 @@ class Lilota():
   def _start_workers(self):
     # Start processes
     for _ in range(self._number_of_workers):
-      p = Process(target=_run_script, args=(self._script_path, self._error_queue))
-      self._processes.append(p)
+      p = self._create_process()
       p.start()
+      self._processes.append(p)
+
+
+  def _create_process(self):
+    return WorkerProcess(
+      id=uuid4(),
+      target=_run_script,
+      args=(self._script_path, self._error_queue)
+    )
 
 
   def _start_process_manager(self):
-    # Create error queue
-    self._error_queue = Queue()
-
     # Start the process manager
     process_manager_task = ProcessManagerTask(
       interval=self._process_manager_interval,
       processes=self._processes,
-      error_queue=self._error_queue
+      error_queue=self._error_queue,
+      process_factory=self._create_process
     )
     self._process_manager_heartbeat = Heartbeat(f"process_manager", process_manager_task, None)
     self._process_manager_heartbeat.start()
@@ -234,8 +262,8 @@ class Lilota():
     from the internal process list.
     """
     self._stop_scheduler()
-    self._stop_workers()
     self._stop_process_manager()
+    self._stop_workers()
     self._is_started = False
 
 
