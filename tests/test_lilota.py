@@ -115,7 +115,7 @@ class LilotaTestCase(TestCase):
       self.assertEqual(len(lilota._processes), 8)
       for p in lilota._processes:
         self.assertTrue(p.is_alive())
-    except Exception as ex:
+    except Exception:
       lilota.stop()
 
     # Act
