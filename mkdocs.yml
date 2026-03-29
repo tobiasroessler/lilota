@@ -12,6 +12,8 @@ nav:
   - User Guide:
     - Lilota is simple: lilota-is-simple.md
     - Task registration: task-registration.md
+    - Worker maintenance: worker-maintenance.md
+    - Task timeout: task-timeout.md
     - Shutdown: shutdown.md
     - Database: database.md
   - Reference:
