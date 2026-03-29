@@ -36,16 +36,6 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
       command.upgrade(cfg, "head")
     except Exception as ex:
       raise Exception(f"Could not update the database: {str(ex)}")
-    
-    # # Create SQLAlchemy engine and session
-    # engine = create_engine(cls.DB_URL)
-    # Session = sessionmaker(bind=engine)
-    # session = Session()
-
-    # # Delete all tasks
-    # session.query(Task).delete()
-    # session.commit()
-    # session.close()
 
 
   def setUp(self):
@@ -142,6 +132,63 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
     # Assert
     self.assertIsNotNone(next_task)
     self.assertEqual(next_task.id, task2_id)
+
+
+  def test_expire_overdue_tasks___with_one_running_and_expired_task___should_set_status_expired(self):
+    # Arrange
+    logger = logging.getLogger("test_logger")
+    task_id: Task = self.create_task(Task(
+      name="test",
+      status=TaskStatus.RUNNING,
+      run_at=datetime(2026, 3, 20, 0, 0, 0),
+      expires_at=datetime(2026, 3, 20, 1, 0, 0)
+    ))
+    store = SqlAlchemyTaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+
+    # Act
+    store.expire_overdue_tasks()
+
+    # Assert
+    task = store.get_task_by_id(task_id)
+    self.assertEqual(task.status, TaskStatus.EXPIRED)
+
+
+  def test_expire_overdue_tasks___with_one_running_and_not_expired_task___should_not_set_status_to_expired(self):
+    # Arrange
+    logger = logging.getLogger("test_logger")
+    task_id: Task = self.create_task(Task(
+      name="test",
+      status=TaskStatus.RUNNING,
+      run_at=datetime(2026, 3, 20, 0, 0, 0),
+      expires_at=None
+    ))
+    store = SqlAlchemyTaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+
+    # Act
+    store.expire_overdue_tasks()
+
+    # Assert
+    task = store.get_task_by_id(task_id)
+    self.assertEqual(task.status, TaskStatus.RUNNING)
+
+
+  def test_expire_overdue_tasks___with_one_expired_task___should_do_nothing(self):
+    # Arrange
+    logger = logging.getLogger("test_logger")
+    task_id: Task = self.create_task(Task(
+      name="test",
+      status=TaskStatus.EXPIRED,
+      run_at=datetime(2026, 3, 20, 0, 0, 0),
+      expires_at=datetime(2026, 3, 20, 1, 0, 0)
+    ))
+    store = SqlAlchemyTaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+
+    # Act
+    store.expire_overdue_tasks()
+
+    # Assert
+    task = store.get_task_by_id(task_id)
+    self.assertEqual(task.status, TaskStatus.EXPIRED)
 
 
   def test_start_task___with_no_timeout___should_not_set_expires_at_and_timeout(self):

@@ -3,7 +3,7 @@ from typing import Callable, Type, Optional, Any
 from lilota.node import LilotaNode, NodeHeartbeatTask
 from lilota.models import NodeType, Task, TaskProgress, RegisteredTask
 from lilota.logging import create_context_logger
-from lilota.stores import SqlAlchemyNodeStore, SqlAlchemyNodeLeaderStore
+from lilota.stores import SqlAlchemyNodeStore, SqlAlchemyNodeLeaderStore, SqlAlchemyTaskStore
 from lilota.heartbeat import Heartbeat
 from lilota.utils import exception_to_dict, error_to_dict
 import logging
@@ -22,7 +22,7 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
   maintenance tasks such as cleaning up stale nodes.
   """
 
-  def __init__(self, interval: float, node_id: str, node_timeout_sec: int, node_store: SqlAlchemyNodeStore, node_leader_store: SqlAlchemyNodeLeaderStore, logger: logging.Logger):
+  def __init__(self, interval: float, node_id: str, node_timeout_sec: int, node_store: SqlAlchemyNodeStore, node_leader_store: SqlAlchemyNodeLeaderStore, task_store: SqlAlchemyTaskStore, logger: logging.Logger):
     """Initialize the worker heartbeat task.
 
     Args:
@@ -38,6 +38,7 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
     super().__init__(interval, node_id, node_store, logger)
     self._node_timeout_sec = node_timeout_sec
     self._node_leader_store = node_leader_store
+    self._task_store = task_store
     self._is_leader = False
     
 
@@ -78,6 +79,7 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
   def _run_maintenance(self) -> None:
     try:
       self._update_status_on_dead_nodes()
+      self._update_status_on_expired_tasks()
     except Exception:
       # Never let maintenance kill the heartbeat thread
       self._logger.exception("Node maintenance failed")
@@ -88,6 +90,10 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
     cleaned = self._node_store.update_status_on_dead_nodes(cutoff, self._node_id)
     if cleaned > 0:
       self._logger.debug(f"Marked {cleaned} stale node(s) as DEAD")
+
+
+  def _update_status_on_expired_tasks(self):
+    self._task_store.expire_overdue_tasks()
 
 
 
@@ -229,6 +235,7 @@ class LilotaWorker(LilotaNode):
       self._node_timeout_sec, 
       self._node_store,
       node_leader_store,
+      self._task_store,
       self._logger
     )
     self._heartbeat = Heartbeat(f"scheduler_heartbeat_{self._node_id}", heartbeat_task, self._logger)

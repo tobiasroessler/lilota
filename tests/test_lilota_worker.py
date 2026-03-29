@@ -7,12 +7,14 @@ from unittest import TestCase, main
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from lilota.worker import LilotaWorker
-from lilota.models import Node, NodeType, NodeStatus, NodeLeader, Task, LogEntry
+from lilota.models import Node, NodeType, NodeStatus, NodeLeader, Task, TaskStatus, LogEntry
 from lilota.db.alembic import get_alembic_config
-from lilota.stores import SqlAlchemyLogStore
+from lilota.stores import SqlAlchemyTaskStore, SqlAlchemyLogStore
 import logging
 import time
+from datetime import datetime
 import threading
+from uuid import UUID
 
 
 @dataclass
@@ -403,6 +405,40 @@ class LilotaWorkerTestCase(TestCase):
     worker2.stop()
     t1.join(1)
     t2.join(1)
+
+
+  def test_update_status_on_expired_tasks___with_one_running_and_expired_task___should_set_status_expired(self):
+    # Arrange
+    logger = logging.getLogger("test_logger")
+    task_id: UUID = self.create_task(Task(
+      name="test",
+      status=TaskStatus.RUNNING,
+      run_at=datetime(2026, 3, 20, 0, 0, 0),
+      expires_at=datetime(2026, 3, 20, 1, 0, 0)
+    ))
+    store = SqlAlchemyTaskStore(LilotaWorkerTestCase.DB_URL, logger, False)
+    worker = LilotaWorker(LilotaWorkerTestCase.DB_URL, logging_level=logging.DEBUG)
+    
+    # Act
+    t = threading.Thread(target=worker.start, daemon=True)
+    t.start()
+    try:
+      time.sleep(1)
+      t.join(1)
+    finally:
+      worker.stop()
+
+    # Assert
+    task: Task = store.get_task_by_id(task_id)
+    self.assertEqual(task.status, TaskStatus.EXPIRED)
+
+
+  def create_task(self, task: Task) -> Task:
+    with LilotaWorkerTestCase.get_session() as session:
+      session.add(task)
+      session.commit()
+      return task.id
+    
 
 
 if __name__ == '__main__':

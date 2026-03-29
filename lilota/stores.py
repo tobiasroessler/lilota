@@ -2,7 +2,7 @@ from abc import ABC
 import os
 from .models import Node, NodeType, NodeStatus, NodeLeader, Task, TaskStatus, LogEntry
 from datetime import datetime, timezone, timedelta
-from sqlalchemy import create_engine, select, update
+from sqlalchemy import create_engine, select, update, Result
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
 from typing import Any
@@ -209,6 +209,21 @@ class SqlAlchemyTaskStore(StoreBase):
           .all()
       )
     
+
+  def expire_overdue_tasks(self) -> None:
+    """Set status to "expired" for running tasks whose expiration time has passed."""
+    with self._get_session() as session:
+      with session.begin():
+        session.execute(
+          update(Task)
+          .where(
+            Task.status == TaskStatus.RUNNING,
+            Task.expires_at.is_not(None),
+            Task.expires_at < datetime.now(timezone.utc)
+          )
+          .values(status=TaskStatus.EXPIRED)
+        )
+
 
   def has_unfinished_tasks(self) -> bool:
     """Check if there are any unfinished tasks in the database."""
