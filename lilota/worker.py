@@ -80,6 +80,7 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
     try:
       self._update_status_on_dead_nodes()
       self._update_status_on_expired_tasks()
+      self._retry_tasks()
     except Exception:
       # Never let maintenance kill the heartbeat thread
       self._logger.exception("Node maintenance failed")
@@ -94,6 +95,10 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
 
   def _update_status_on_expired_tasks(self):
     self._task_store.expire_overdue_tasks()
+
+
+  def _retry_tasks(self):
+    self._task_store.retry_tasks()
 
 
 

@@ -262,6 +262,170 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
     self.assertIsNone(task.end_date_time)
 
 
+  def test_retry_tasks___with_no_tasks___should_return_zero(self):
+    # Arrange
+    logger = logging.getLogger("test_logger")
+    store = SqlAlchemyTaskStore(self.DB_URL, logger, False)
+
+    # Act
+    result = store.retry_tasks()
+
+    # Assert
+    self.assertEqual(result, 0)
+
+
+  def test_retry_tasks___with_failed_task___should_create_retry_task(self):
+    # Arrange
+    logger = logging.getLogger("test_logger")
+
+    task_id = self.create_task(Task(
+      name="test",
+      status=TaskStatus.FAILED,
+      run_at=datetime.now(timezone.utc),
+      attempts=1,
+      max_attempts=3
+    ))
+
+    store = SqlAlchemyTaskStore(self.DB_URL, logger, False)
+
+    # Act
+    result = store.retry_tasks()
+
+    # Assert
+    self.assertEqual(result, 1)
+
+    with self.get_session() as session:
+      tasks = session.query(Task).all()
+      self.assertEqual(len(tasks), 2)
+      original = next(t for t in tasks if t.id == task_id)
+      retry = next(t for t in tasks if t.id != task_id)
+      self.assertIsNotNone(original.retried_at)
+      self.assertEqual(retry.previous_task_id, task_id)
+      self.assertEqual(retry.attempts, 2)
+      self.assertEqual(retry.status, TaskStatus.CREATED)
+
+
+  def test_retry_tasks___with_expired_running_task___should_retry(self):
+    # Arrange
+    logger = logging.getLogger("test_logger")
+    past = datetime.now(timezone.utc) - timedelta(hours=1)
+
+    self.create_task(Task(
+      name="test",
+      status=TaskStatus.RUNNING,
+      run_at=past,
+      attempts=1,
+      max_attempts=3,
+      expires_at=past
+    ))
+
+    store = SqlAlchemyTaskStore(self.DB_URL, logger, False)
+
+    # Act
+    result = store.retry_tasks()
+
+    # Assert
+    self.assertEqual(result, 1)
+
+
+  def test_retry_tasks___with_max_attempts_reached___should_not_retry(self):
+    # Arrange
+    logger = logging.getLogger("test_logger")
+
+    self.create_task(Task(
+      name="test",
+      status=TaskStatus.FAILED,
+      run_at=datetime.now(timezone.utc),
+      attempts=3,
+      max_attempts=3
+    ))
+
+    store = SqlAlchemyTaskStore(self.DB_URL, logger, False)
+
+    # Act
+    result = store.retry_tasks()
+
+    # Assert
+    self.assertEqual(result, 0)
+
+
+  def test_retry_tasks___with_already_retried_task___should_skip(self):
+    # Arrange
+    logger = logging.getLogger("test_logger")
+
+    task = Task(
+      name="test",
+      status=TaskStatus.FAILED,
+      run_at=datetime.now(timezone.utc),
+      attempts=1,
+      max_attempts=3,
+      retried_at=datetime.now(timezone.utc)
+    )
+
+    self.create_task(task)
+    store = SqlAlchemyTaskStore(self.DB_URL, logger, False)
+
+    # Act
+    result = store.retry_tasks()
+
+    # Assert
+    self.assertEqual(result, 0)
+
+
+  def test_retry_tasks___should_apply_backoff_delay(self):
+    # Arrange
+    logger = logging.getLogger("test_logger")
+    attempts = 2
+
+    task_id = self.create_task(Task(
+      name="test",
+      status=TaskStatus.FAILED,
+      run_at=datetime.now(timezone.utc),
+      attempts=attempts,
+      max_attempts=5
+    ))
+
+    store = SqlAlchemyTaskStore(self.DB_URL, logger, False)
+
+    # Act
+    before = datetime.now(timezone.utc)
+    store.retry_tasks()
+    after = datetime.now(timezone.utc)
+
+    # Assert
+    with self.get_session() as session:
+      retry_task = session.query(Task).filter(Task.previous_task_id == task_id).one()
+      expected_delay = timedelta(seconds=5 * attempts)
+      self.assertTrue(
+        before + expected_delay <= retry_task.run_at <= after + expected_delay
+      )
+
+
+  def test_retry_tasks___should_respect_batch_size(self):
+    # Arrange
+    logger = logging.getLogger("test_logger")
+
+    for _ in range(5):
+      self.create_task(Task(
+        name="test",
+        status=TaskStatus.FAILED,
+        run_at=datetime.now(timezone.utc),
+        attempts=1,
+        max_attempts=3
+      ))
+
+    store = SqlAlchemyTaskStore(self.DB_URL, logger, False)
+
+    # Act
+    result = store.retry_tasks(batch_size=2)
+
+    # Assert
+    self.assertEqual(result, 2)
+    with self.get_session() as session:
+      retry_tasks = session.query(Task).filter(Task.previous_task_id.isnot(None)).all()
+      self.assertEqual(len(retry_tasks), 2)
+
+
   def delete_all_tasks(self):
     with SqlAlchemyTaskStoreTestCase.get_session() as session:
       session.query(Task).delete()

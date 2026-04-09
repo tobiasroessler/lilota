@@ -2,7 +2,7 @@ from abc import ABC
 import os
 from .models import Node, NodeType, NodeStatus, NodeLeader, Task, TaskStatus, LogEntry
 from datetime import datetime, timezone, timedelta
-from sqlalchemy import create_engine, select, update, Result
+from sqlalchemy import create_engine, select, update, insert, and_, or_
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
 from typing import Any
@@ -155,6 +155,8 @@ class SqlAlchemyNodeStore(StoreBase):
 
 class SqlAlchemyTaskStore(StoreBase):
   """Database store for managing Lilota tasks."""
+
+  BATCH_SIZE = 50
 
   def __init__(self, db_url: str, logger: logging.Logger, set_progress_manually: bool = False):
     """
@@ -318,6 +320,82 @@ class SqlAlchemyTaskStore(StoreBase):
         task.expires_at = expires_at
         task.end_date_time = None
         return task
+
+
+  def retry_tasks(self, batch_size = BATCH_SIZE):
+    now = datetime.now(timezone.utc)
+
+    with self._get_session() as session:
+      with session.begin():
+        # 1. Select tasks
+        stmt = (
+          select(Task)
+            .where(
+              and_(
+                Task.retried_at.is_(None),
+                Task.attempts < Task.max_attempts,
+                or_(
+                  Task.status.in_(["failed", "expired"]),
+                  and_(
+                    Task.status == "running",
+                    Task.expires_at.is_not(None),
+                    Task.expires_at < now
+                  )
+                )
+              )
+            )
+            .order_by(Task.run_at)
+            .limit(batch_size)
+        )
+
+        tasks = session.execute(stmt).scalars().all()
+
+        if not tasks:
+          return 0
+        
+        new_tasks = []
+
+        for task in tasks:
+          if task.retried_at is not None:
+            continue
+
+          current_version = task.version
+          current_attempts = task.attempts
+          
+          # 2. Try to "claim" via optimistic locking
+          result = session.execute(
+            update(Task)
+            .where(
+              Task.id == task.id,
+              Task.version == current_version,
+              Task.retried_at.is_(None)
+            )
+            .values(
+              retried_at=now,
+              version=current_version + 1
+            )
+          )
+
+          # 3. If no row updated: someone else took it
+          if result.rowcount == 0:
+            continue
+
+          # 4. Create retry task
+          retry_task = Task(
+            name=task.name,
+            status=TaskStatus.CREATED,
+            run_at=now + timedelta(seconds=5 * current_attempts),
+            attempts=current_attempts + 1,
+            max_attempts=task.max_attempts,
+            previous_task_id=task.id,
+            timeout=task.timeout,
+            input=task.input,
+          )
+
+          new_tasks.append(retry_task)
+
+        session.add_all(new_tasks)
+        return len(new_tasks)
 
 
   def set_progress(self, id: UUID, progress: int):

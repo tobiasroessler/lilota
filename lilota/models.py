@@ -235,6 +235,7 @@ class Task(Base):
   )
   attempts: Mapped[int] = mapped_column(nullable=False, default=0)
   max_attempts: Mapped[int] = mapped_column(nullable=False, default=1)
+  retried_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None, index=True)
   previous_task_id: Mapped[UUID] = mapped_column(nullable=True, default=None)
   timeout: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
   expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
@@ -246,6 +247,7 @@ class Task(Base):
   error: Mapped[Any | None] = mapped_column(JSON)
   locked_by: Mapped[UUID | None] = mapped_column(default=None)
   locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+  version: Mapped[int] = mapped_column(default=0, nullable=False)
 
   __table_args__ = (
     CheckConstraint(
@@ -253,6 +255,7 @@ class Task(Base):
       name="lilota_task_status_check"
     ),
     Index("idx_get_next_task", "status", "run_at"),
+    Index("idx_retryable_tasks", "retried_at", "status", "run_at"),
   )
 
   def __repr__(self):
