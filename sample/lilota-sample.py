@@ -35,7 +35,7 @@ def main():
   # Wait one second because Lilota runs in the background and decides when to pick up a task.
   # This is normally not needed. We do it here because we want to wait until the task 
   # has been executed.
-  time.sleep(1)
+  time.sleep(3)
 
   # Retrieve task information from the database and print the result
   task: Task = lilota.get_task_by_id(task_id)
