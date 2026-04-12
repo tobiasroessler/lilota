@@ -112,6 +112,7 @@ class LilotaWorker(LilotaNode):
   """
 
   LOGGER_NAME = "lilota.worker"
+  MAX_ATTEMPTS = 1
 
   def __init__(
     self,
@@ -165,7 +166,8 @@ class LilotaWorker(LilotaNode):
     input_model: Optional[Type[Any]] = None,
     output_model: Optional[Type[Any]] = None,
     task_progress: Optional[TaskProgress] = None,
-    timeout: Optional[timedelta] = None
+    timeout: Optional[timedelta] = None,
+    max_attempts: int = MAX_ATTEMPTS
   ):
     if self._is_started:
       raise Exception("It is not allowed to register functions after startup. Stop by using the stop() method.")
@@ -182,7 +184,8 @@ class LilotaWorker(LilotaNode):
       input_model=input_model,
       output_model=output_model,
       task_progress=task_progress,
-      timeout=timeout
+      timeout=timeout,
+      max_attempts=max_attempts
     )
 
     self._registry[name] = task
@@ -195,7 +198,8 @@ class LilotaWorker(LilotaNode):
     input_model=None,
     output_model=None,
     task_progress=None,
-    timeout=timedelta(minutes=5)
+    timeout=timedelta(minutes=5),
+    max_attempts=MAX_ATTEMPTS
   ):
     """Decorator for registering a task function.
 
@@ -212,6 +216,8 @@ class LilotaWorker(LilotaNode):
       output_model (Optional[Type[Any]]): Optional output validation model.
       task_progress (Optional[TaskProgress]): Task progress tracking strategy.
       timeout (Optional[timedelta]): Optional timeout that can be set for a task.
+      max_attempts (int): Upper limit on how many times the task may be executed.
+        Once the number of attempts reaches this value, the task will no longer be retried.
 
     Returns:
       Callable: A decorator that registers the function.
@@ -223,7 +229,8 @@ class LilotaWorker(LilotaNode):
         input_model=input_model,
         output_model=output_model,
         task_progress=task_progress,
-        timeout=timeout
+        timeout=timeout,
+        max_attempts=max_attempts
       )
       return func
     return decorator
@@ -279,7 +286,8 @@ class LilotaWorker(LilotaNode):
           try:
             # Set status to running
             timeout = registered_task.timeout
-            started_task = self._task_store.start_task(task_id, timeout)
+            max_attempts = registered_task.max_attempts
+            started_task = self._task_store.start_task(task_id, max_attempts, timeout)
 
             # Set task_progress object if available
             task_progress: TaskProgress = None 

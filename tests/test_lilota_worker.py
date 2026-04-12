@@ -104,6 +104,20 @@ class LilotaWorkerTestCase(TestCase):
       self.assertEqual(str(err), "Task 'add_task' is already registered")
 
 
+  def test_register___set_max_attempts___should_be_set_on_registered_task(self):
+    # Arrange
+    max_attempts = 10
+    worker = LilotaWorker(LilotaWorkerTestCase.DB_URL)
+
+    # Act
+    worker._register("add_task", AddInput, max_attempts=max_attempts)
+
+    # Assert
+    self.assertEqual(len(worker._registry), 1)
+    registered_task = worker._registry["add_task"]
+    self.assertEqual(registered_task.max_attempts, max_attempts)
+
+
   def test_start___but_started_twice___should_raise_exception(self):
     # Arrange
     worker = LilotaWorker(LilotaWorkerTestCase.DB_URL)

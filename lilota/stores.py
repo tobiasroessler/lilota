@@ -291,11 +291,12 @@ class SqlAlchemyTaskStore(StoreBase):
       return session.get(Task, task_id)
 
 
-  def start_task(self, id: UUID, timeout: timedelta | None = None) -> Task:
+  def start_task(self, id: UUID, max_attempts: int, timeout: timedelta | None = None) -> Task:
     """Mark a task as RUNNING and initialize metadata.
 
     Args:
         id (UUID): Id of the task.
+        max_attempts (int): Upper limit on how many times the task may be executed.
         timeout (timedelta | None): Optional timeout that can be set for a task.
 
     Returns:
@@ -315,6 +316,7 @@ class SqlAlchemyTaskStore(StoreBase):
 
         task.pid = os.getpid()
         task.status = TaskStatus.RUNNING
+        task.max_attempts = max_attempts
         task.progress_percentage = 0
         task.start_date_time = start_date_time
         task.expires_at = expires_at
@@ -323,6 +325,47 @@ class SqlAlchemyTaskStore(StoreBase):
 
 
   def retry_tasks(self, batch_size = BATCH_SIZE):
+    """Retry eligible tasks by creating new scheduled task instances.
+
+    This method scans for tasks that are eligible for retry based on their
+    status, expiration, and retry limits. It uses optimistic locking to safely
+    "claim" tasks in concurrent environments, ensuring that no task is retried
+    more than once across multiple workers.
+
+    Eligible tasks include:
+        - Tasks with status "failed" or "expired"
+        - Tasks with status "running" that have exceeded their expiration time
+
+    A task is only retried if:
+        - It has not already been retried (`retried_at` is None)
+        - It has remaining retry attempts (`attempts < max_attempts`)
+
+    For each claimed task:
+        - A new task is created with incremented attempt count
+        - The retry is scheduled with a delay proportional to the number of attempts
+        - The original task is marked with `retried_at` to prevent duplicate retries
+
+    Concurrency is handled using optimistic locking via the `version` field.
+    If another worker updates the task first, the current worker skips it.
+
+    Args:
+        batch_size (int, optional):
+            Maximum number of tasks to process in a single run.
+            Defaults to BATCH_SIZE.
+
+    Returns:
+        int:
+            The number of retry tasks successfully created.
+
+    Raises:
+        sqlalchemy.exc.SQLAlchemyError:
+            If a database error occurs during the transaction.
+
+    Notes:
+        - Uses a linear backoff strategy: delay = 5 * current_attempts (seconds)
+        - All operations are executed within a single transactional session
+        - Safe for concurrent execution across multiple workers
+    """
     now = datetime.now(timezone.utc)
 
     with self._get_session() as session:

@@ -203,7 +203,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
     store = SqlAlchemyTaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
 
     # Act
-    task: Task = store.start_task(task_id)
+    task: Task = store.start_task(task_id, 1)
 
     # Assert
     self.assertGreater(task.pid, 0)
@@ -227,7 +227,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
     store = SqlAlchemyTaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
 
     # Act
-    task: Task = store.start_task(task_id, timedelta(seconds=timeout_in_sec))
+    task: Task = store.start_task(task_id, 1, timedelta(seconds=timeout_in_sec))
 
     # Assert
     self.assertGreater(task.pid, 0)
@@ -250,7 +250,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
     store = SqlAlchemyTaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
 
     # Act
-    task: Task = store.start_task(task_id, None)
+    task: Task = store.start_task(task_id, 1, None)
 
     # Assert
     self.assertGreater(task.pid, 0)

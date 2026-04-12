@@ -99,14 +99,16 @@ class RegisteredTask:
       serialize the task result.
     task_progress (Optional[TaskProgress]): Optional progress helper.
     timeout (Optional[timedelta]): Optional timeout that can be set for a task.
+    max_attempts (int): Upper limit on how many times the task may be executed.
   """
 
-  def __init__(self, func: Callable, input_model: Optional[Type], output_model: Optional[Type], task_progress: Optional[TaskProgress], timeout: Optional[timedelta]):
+  def __init__(self, func: Callable, input_model: Optional[Type], output_model: Optional[Type], task_progress: Optional[TaskProgress], timeout: Optional[timedelta], max_attempts: int):
     self.func = func
     self.input_model = input_model
     self.output_model = output_model
     self.task_progress = task_progress
     self.timeout = timeout
+    self.max_attempts = max_attempts
 
 
   def __call__(self, raw_input: Any, task_progress: TaskProgress):

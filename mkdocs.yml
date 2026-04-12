@@ -14,6 +14,7 @@ nav:
     - Task registration: task-registration.md
     - Worker maintenance: worker-maintenance.md
     - Task timeout: task-timeout.md
+    - Retry mechanism: retry-mechanism.md
     - Shutdown: shutdown.md
     - Database: database.md
   - Reference:
