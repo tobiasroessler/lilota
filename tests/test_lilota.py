@@ -8,7 +8,7 @@ from unittest import TestCase, main
 from typing import Any
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from lilota.core import Lilota, ManagedProcess
+from lilota.core import Lilota, LilotaMode, ManagedProcess
 from lilota.models import Node, NodeLeader, Task, TaskStatus, LogEntry, NodeType
 from lilota.db.alembic import get_alembic_config
 from lilota.stores import SqlAlchemyLogStore
@@ -99,6 +99,90 @@ class LilotaTestCase(TestCase):
       session.query(LogEntry).delete()
       session.query(NodeLeader).delete()
       session.commit()
+
+
+  def test_init___worker_mode_with_zero_workers___should_raise(self):
+    # Act & Assert
+    with self.assertRaises(ValueError) as ctx:
+      Lilota(
+        db_url=self.DB_URL,
+        mode=LilotaMode.WORKER,
+        script_path="dummy.py",
+        number_of_workers=0
+      )
+
+    self.assertEqual(
+      str(ctx.exception),
+      "number_of_workers must be > 0 in WORKER or ALL mode"
+    )
+
+
+  def test_init___all_mode_with_zero_workers___should_raise(self):
+    # Act & Assert
+    with self.assertRaises(ValueError) as ctx:
+      Lilota(
+        db_url=self.DB_URL,
+        mode=LilotaMode.ALL,
+        script_path="dummy.py",
+        number_of_workers=0
+      )
+
+    self.assertEqual(
+      str(ctx.exception),
+      "number_of_workers must be > 0 in WORKER or ALL mode"
+    )
+
+
+  def test_init___worker_mode_with_too_many_workers___should_raise(self):
+    # Arrange
+    from multiprocessing import cpu_count
+    too_many = cpu_count() + 1
+
+    # Act & Assert
+    with self.assertRaises(ValueError) as ctx:
+      Lilota(
+        db_url=self.DB_URL,
+        mode=LilotaMode.WORKER,
+        script_path="dummy.py",
+        number_of_workers=too_many
+      )
+
+    self.assertEqual(
+      str(ctx.exception),
+      f"number_of_workers cannot be greater than {cpu_count()}"
+    )
+
+
+  def test_init___all_mode_with_too_many_workers___should_raise(self):
+    # Arrange
+    from multiprocessing import cpu_count
+    too_many = cpu_count() + 1
+
+    # Act & Assert
+    with self.assertRaises(ValueError) as ctx:
+      Lilota(
+        db_url=self.DB_URL,
+        mode=LilotaMode.ALL,
+        script_path="dummy.py",
+        number_of_workers=too_many
+      )
+
+    self.assertEqual(
+      str(ctx.exception),
+      f"number_of_workers cannot be greater than {cpu_count()}"
+    )
+
+
+  def test_init___scheduler_mode_ignores_worker_validation___should_not_raise(self):
+    # This should NOT raise even with invalid worker count
+    lilota = Lilota(
+      db_url=self.DB_URL,
+      mode=LilotaMode.SCHEDULER,
+      script_path=None,
+      number_of_workers=0  # allowed in scheduler-only mode
+    )
+
+    self.assertIsNotNone(lilota)
 
 
   def test_stop___start_and_directly_stop___should_shutdown_all_processes(self):

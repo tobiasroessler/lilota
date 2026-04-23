@@ -158,6 +158,20 @@ class ProcessManagerTask(HeartbeatTask):
 
 
 
+class LilotaMode(str, Enum):
+  """Execution mode for the Lilota runtime.
+
+  Attributes:
+    SCHEDULER: Run only the scheduler component.
+    WORKER: Run only worker processes.
+    ALL: Run both scheduler and workers.
+  """
+  SCHEDULER = "scheduler"
+  WORKER = "worker"
+  ALL = "all"
+
+
+
 class Lilota():
   """High-level interface for Lilota task scheduling and worker management.
 
@@ -170,21 +184,92 @@ class Lilota():
   Workers are started as separate Python processes that run the provided
   script file as a module entry point.
   """
+
+  @classmethod
+  def scheduler(cls, db_url: str, **kwargs):
+    """Create a Lilota instance running only the scheduler.
+
+    Args:
+      db_url (str): Database connection URL.
+      **kwargs: Additional keyword arguments passed to the constructor.
+
+    Returns:
+      Lilota: Configured instance in scheduler-only mode.
+    """
+    return cls(
+      mode=LilotaMode.SCHEDULER,
+      db_url=db_url,
+      script_path=None,
+      number_of_workers=0,
+      **kwargs
+    )
+  
+
+  @classmethod
+  def worker(cls, db_url: str, script_path: str, number_of_workers: int, **kwargs):
+    """Create a Lilota instance running only worker processes.
+
+    Args:
+      db_url (str): Database connection URL.
+      script_path (str): Path to the worker script.
+      number_of_workers (int): Number of worker processes to spawn.
+      **kwargs: Additional keyword arguments passed to the constructor.
+
+    Returns:
+      Lilota: Configured instance in worker-only mode.
+    """
+    return cls(
+      mode=LilotaMode.WORKER,
+      db_url=db_url,
+      script_path=script_path,
+      number_of_workers=number_of_workers,
+      **kwargs
+    )
+
+
+  @classmethod
+  def all(cls, db_url: str, script_path: str, number_of_workers: int, **kwargs):
+    """Create a Lilota instance running both scheduler and workers.
+
+    Args:
+      db_url (str): Database connection URL.
+      script_path (str): Path to the worker script.
+      number_of_workers (int): Number of worker processes to spawn.
+      **kwargs: Additional keyword arguments passed to the constructor.
+
+    Returns:
+      Lilota: Configured instance running both scheduler and workers.
+    """
+    return cls(
+      mode=LilotaMode.ALL,
+      db_url=db_url,
+      script_path=script_path,
+      number_of_workers=number_of_workers,
+      **kwargs
+    )
+  
+
   def __init__(
-      self, 
-      db_url: str, 
-      script_path: str = None, 
-      number_of_workers: int = cpu_count(), 
-      scheduler_heartbeat_interval: float = 5, 
-      scheduler_timeout_sec: int = 20, 
-      process_manager_interval: float = 1.0, 
-      stop_worker_timeout: int = 60, 
-      logging_level = logging.INFO):
+    self, 
+    db_url: str, 
+    *,
+    mode: LilotaMode = LilotaMode.ALL,
+    script_path: str = None, 
+    number_of_workers: int = cpu_count(), 
+    scheduler_heartbeat_interval: float = 5, 
+    scheduler_timeout_sec: int = 20, 
+    process_manager_interval: float = 1.0, 
+    stop_worker_timeout: int = 60, 
+    logging_level = logging.INFO):
     """Create a new Lilota runtime instance.
 
     Args:
       db_url (str):
         Database connection URL used by the scheduler.
+
+      mode (LilotaMode, optional):
+        Execution mode controlling whether the scheduler, workers,
+        or both are started. Defaults to ALL.
 
       script_path (str):
         Path to a Python script that defines and registers Lilota tasks.
@@ -209,12 +294,16 @@ class Lilota():
       logging_level (int, optional):
         Logging level used by the scheduler. Defaults to logging.INFO.
     """
-    number_of_cpus = cpu_count()
-    if number_of_workers > number_of_cpus:
-      raise Exception(f"number_of_workers cannot be greater than {number_of_cpus}")
-
+    if mode in (LilotaMode.WORKER, LilotaMode.ALL):
+      if number_of_workers <= 0:
+        raise ValueError("number_of_workers must be > 0 in WORKER or ALL mode")
+      
+      number_of_cpus = cpu_count()
+      if number_of_workers > number_of_cpus:
+        raise ValueError(f"number_of_workers cannot be greater than {number_of_cpus}")
 
     self._db_url = db_url
+    self._mode = mode
     self._script_path = script_path
     self._number_of_workers = number_of_workers
     self._process_manager_interval = process_manager_interval
@@ -276,19 +365,27 @@ class Lilota():
 
 
   def start(self):
-    """Start the scheduler and spawn worker processes.
+    """Start the configured Lilota components.
 
-    This method:
-      1. Starts the Lilota scheduler.
-      2. Launches worker processes that execute the configured task script.
-      3. Monitors the started processes.
+    Depending on the selected mode, this method:
+      - Starts the scheduler (SCHEDULER, ALL)
+      - Spawns worker processes (WORKER, ALL)
+      - Starts process monitoring for workers (WORKER, ALL)
 
-    After startup, the instance is ready to schedule and process tasks.
+    After startup, the instance is ready to schedule and/or execute tasks.
     """
-    self._error_queue = Queue()
-    self._start_scheduler()
-    self._start_workers()
-    self._start_process_manager()
+    if self._is_started:
+      return
+
+    if self._mode in (LilotaMode.SCHEDULER, LilotaMode.ALL):
+      self._start_scheduler()
+
+    if self._mode in (LilotaMode.WORKER, LilotaMode.ALL):
+      if not self._script_path:
+        raise ValueError("script_path must be provided in WORKER or ALL mode")
+      self._start_workers()
+      self._start_process_manager()
+
     self._is_started = True
 
 
@@ -313,18 +410,26 @@ class Lilota():
 
 
   def stop(self):
-    """Stop the scheduler and terminate all worker processes.
+    """Stop all running Lilota components.
+
+    This includes:
+      - Stopping the scheduler (if running)
+      - Stopping process monitoring
+      - Gracefully terminating worker processes
 
     Worker processes are first asked to terminate gracefully. If a worker
-    does not exit within ``stop_worker_timeout`` seconds, it will be
-    forcefully killed.
-
-    After completion, all worker processes are cleaned up and removed
-    from the internal process list.
+    does not exit within ``stop_worker_timeout`` seconds, it is forcefully killed.
     """
-    self._stop_scheduler()
-    self._stop_process_manager()
-    self._stop_workers()
+    if not self._is_started:
+      return
+
+    if self._mode in (LilotaMode.SCHEDULER, LilotaMode.ALL):
+      self._stop_scheduler()
+
+    if self._mode in (LilotaMode.WORKER, LilotaMode.ALL):
+      self._stop_process_manager()
+      self._stop_workers()
+
     self._is_started = False
 
 
