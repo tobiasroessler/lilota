@@ -8,7 +8,7 @@ from unittest import TestCase, main
 from typing import Any
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from lilota.core import Lilota, WorkerProcess
+from lilota.core import Lilota, ManagedProcess
 from lilota.models import Node, NodeLeader, Task, TaskStatus, LogEntry, NodeType
 from lilota.db.alembic import get_alembic_config
 from lilota.stores import SqlAlchemyLogStore
@@ -105,16 +105,16 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="scripts/lilota_test_script.py",
+      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py",
       number_of_workers=8
     )
 
     try:
       lilota.start()
       self.assertTrue(lilota._is_started)
-      self.assertEqual(len(lilota._processes), 8)
-      for p in lilota._processes:
-        self.assertTrue(p.is_alive())
+      self.assertEqual(len(lilota._process_manager._processes), 8)
+      for mp in lilota._process_manager._processes:
+        self.assertIsNone(mp.proc.poll())
     except Exception:
       lilota.stop()
 
@@ -123,14 +123,14 @@ class LilotaTestCase(TestCase):
 
     # Assert
     self.assertFalse(lilota._is_started)
-    self.assertEqual(len(lilota._processes), 0)
+    self.assertEqual(len(lilota._process_manager._processes), 0)
 
 
   def test_schedule___add_1_hello_world_task___should_execute_task(self):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="tests/scripts/hello_world_test_script.py",
+      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/hello_world_test_script.py",
       number_of_workers=1
     )
     lilota.start()
@@ -158,7 +158,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="tests/scripts/lilota_test_script.py",
+      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py",
       number_of_workers=1
     )
     lilota.start()
@@ -186,7 +186,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="tests/scripts/lilota_test_script.py",
+      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py",
       number_of_workers=1
     )
     lilota.start()
@@ -216,7 +216,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="tests/scripts/taskprogress_test_script.py",
+      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/taskprogress_test_script.py",
       number_of_workers=1
     )
     lilota.start()
@@ -229,7 +229,7 @@ class LilotaTestCase(TestCase):
 
     # Assert
     try:
-      self.sleep()
+      self.sleep(3)
       task: Task = lilota.get_task_by_id(id)
       self.assertEqual(task.progress_percentage, 50)
     finally:
@@ -240,7 +240,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="tests/scripts/lilota_test_script.py",
+      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py",
       number_of_workers=1
     )
     lilota.start()
@@ -270,7 +270,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="tests/scripts/taskprogress_test_script.py",
+      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/taskprogress_test_script.py",
       number_of_workers=1
     )
     lilota.start()
@@ -294,7 +294,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="tests/scripts/lilota_test_script.py",
+      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py",
       number_of_workers=1
     )
     lilota.start()
@@ -324,7 +324,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="tests/scripts/lilota_test_script.py",
+      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py",
       number_of_workers=1
     )
     lilota.start()
@@ -354,7 +354,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="tests/scripts/lilota_test_script.py",
+      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py",
       number_of_workers=1
     )
     lilota.start()
@@ -376,8 +376,7 @@ class LilotaTestCase(TestCase):
     ids = []
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="tests/scripts/lilota_test_script.py",
-      number_of_workers=20
+      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py"
     )
     lilota.start()
 
@@ -415,7 +414,7 @@ class LilotaTestCase(TestCase):
     ids = []
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="tests/scripts/lilota_test_script.py",
+      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py",
       number_of_workers=1
     )
     lilota.start()
@@ -455,7 +454,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="tests/scripts/lilota_test_script.py",
+      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py",
       number_of_workers=1
     )
     lilota.start()
@@ -468,7 +467,7 @@ class LilotaTestCase(TestCase):
 
     # Assert
     try:
-      self.sleep()
+      self.sleep(3)
       task = lilota.get_task_by_id(id)
       self.assertEqual(task.status, TaskStatus.FAILED)
       self.assertIsNotNone(task.error)
@@ -484,7 +483,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="tests/scripts/lilota_test_script.py",
+      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py",
       number_of_workers=2,
       logging_level=logging.DEBUG
     )
@@ -531,32 +530,32 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="tests/scripts/infinite_loop_test_script.py",
+      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/infinite_loop_test_script.py",
       number_of_workers=1,
       logging_level=logging.DEBUG
     )
     log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaTestCase.DB_URL)
     lilota.start()
-    process: WorkerProcess = None
+    process: ManagedProcess = None
     process_id: UUID = None
 
     # Act
     try:
-      process = lilota._processes[0]
+      process = lilota._process_manager._processes[0]
       process_id = process.id
       self.assertIsNotNone(process)
-      self.assertTrue(process.is_alive())
+      self.assertIsNone(process.proc.poll())
       task_id = lilota.schedule("infinite_loop")
     except:
       lilota.stop()
 
-    # Assert
-    self.sleep(2)
+    # Assert (debugging not possible)
+    self.sleep(3)
     
     try:
-      new_process = lilota._processes[0]
+      new_process = lilota._process_manager._processes[0]
       self.assertNotEqual(new_process.id, process_id)
-      self.assertIsNone(new_process.exitcode)
+      self.assertIsNone(new_process.proc.poll())
       worker: LilotaWorker = [n for n in lilota.get_all_nodes() if n.type == NodeType.WORKER][0]
       self.assertIsNotNone(worker)
       log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(worker.id)
@@ -567,45 +566,27 @@ class LilotaTestCase(TestCase):
       lilota.stop()
 
 
-  # def test_start___with_unfinished_task___should_schedule_the_task_again(self):
-  #   # Arrange
-  #   engine = create_engine(LilotaTestCase.DB_URL)
-  #   Session = sessionmaker(bind=engine)
-  #   with Session() as session:
-  #     task = Task(
-  #       name="add",
-  #       status=TaskStatus.RUNNING,
-  #       input={"a": 4, "b": 5},
-  #       output=None,
-  #       exception=None,
-  #       progress_percentage=50
-  #     )
-  #     session.add(task)
-  #     session.commit()
-  #     task_id = task.id
-  #   engine.dispose()
+  def test_exception_in_script___when_directly_failing___should_stop_worker(self):
+    # Arrange
+    lilota = Lilota(
+      db_url=LilotaTestCase.DB_URL,
+      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/exception_test_script.py",
+      number_of_workers=1,
+      logging_level=logging.DEBUG
+    )
+    self.assertIsNone(lilota.error)
+    
+    # Act
+    lilota.start()
+    lilota.wait_for_failure()
 
-  #   lilota = Lilota(LilotaTestCase.DB_URL)
-  #   lilota._register(name="add", func=add, input_model=AddInput, output_model=AddOutput)
-  #   task = lilota.get_task_by_id(task_id)
-  #   self.assertEqual(task.status, TaskStatus.RUNNING)
-  #   self.assertEqual(task.progress_percentage, 50)
-
-  #   # Act
-  #   lilota.start()
-
-  #   # Assert
-  #   self.sleep()
-  #   lilota.stop()
-  #   task = lilota.get_task_by_id(task_id)
-  #   self.assertEqual(task.status, TaskStatus.COMPLETED)
-  #   self.assertIsNone(task.exception)
-  #   self.assertEqual(task.progress_percentage, 100)
-  #   number1 = task.input['a']
-  #   number2 = task.input['b']
-  #   result = task.output['sum']
-  #   self.assertEqual(number1 + number2, result)
-  #   lilota.delete_task_by_id(task_id)
+    # Assert
+    try:
+      self.assertTrue(lilota.has_failed())
+      self.assertIsNotNone(lilota.error)
+      self.assertEqual(len(lilota._process_manager._processes), 0)
+    finally:
+      lilota.stop()
 
 
   def sleep(self, seconds: float = 0.3):
@@ -613,12 +594,21 @@ class LilotaTestCase(TestCase):
 
 
   def wait(self, lilota: Lilota) -> None:
+    max = 60
+    index = 0
+
     while True:
       has_unfinished_tasks = lilota._scheduler.has_unfinished_tasks()
       if has_unfinished_tasks:
         self.sleep(1)
+        index = index + 1
+        if index == max:
+          raise Exception("Should finish earlier")
       else:
         break
+
+      if lilota.has_failed():
+        raise Exception(lilota.error)
 
 
 

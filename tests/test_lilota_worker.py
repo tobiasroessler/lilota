@@ -199,7 +199,7 @@ class LilotaWorkerTestCase(TestCase):
     worker = LilotaWorker(LilotaWorkerTestCase.DB_URL, node_heartbeat_interval=1.0)
     t = threading.Thread(target=worker.start, daemon=True)
     t.start()
-    time.sleep(1)
+    time.sleep(1.2)
 
     try:
       node: Node = worker.get_node()
@@ -207,7 +207,7 @@ class LilotaWorkerTestCase(TestCase):
       self.assertIsNotNone(first_seen)
     finally:
       worker.stop()
-      t.join(1)
+      t.join(3)
 
     # Act
     time.sleep(2)

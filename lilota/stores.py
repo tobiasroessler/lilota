@@ -2,13 +2,29 @@ from abc import ABC
 import os
 from .models import Node, NodeType, NodeStatus, NodeLeader, Task, TaskStatus, LogEntry
 from datetime import datetime, timezone, timedelta
-from sqlalchemy import create_engine, select, update, insert, and_, or_
+from sqlalchemy import create_engine, select, update, and_, or_
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
 from typing import Any
 from lilota.utils import normalize_data
 from uuid import UUID
 import logging
+
+
+
+_ENGINE_CACHE = {}
+
+def get_engine(db_url):
+  if db_url not in _ENGINE_CACHE:
+    _ENGINE_CACHE[db_url] = create_engine(
+      db_url,
+      pool_size=10,
+      max_overflow=20,
+      pool_timeout=30,
+      pool_pre_ping=True,
+    )
+  return _ENGINE_CACHE[db_url]
+
 
 
 class StoreBase(ABC):
@@ -31,11 +47,8 @@ class StoreBase(ABC):
 
   def _ensure_engine(self):
     if self._engine is None:
-      self._engine = create_engine(self._db_url, future=True)
-      self._Session = sessionmaker(
-        bind=self._engine,
-        expire_on_commit=False,
-      )
+      self._engine = get_engine(self._db_url)
+      self._Session = sessionmaker(bind=self._engine, expire_on_commit=False)
 
 
   def _get_session(self):
@@ -576,60 +589,58 @@ class SqlAlchemyNodeLeaderStore(StoreBase):
     """
     now = datetime.now(timezone.utc)
     new_expiry = now + timedelta(seconds=self._node_timeout_sec)
-    session = self._get_session()
-
-    try:
-      # Try to take over expired lease
-      result = session.execute(
-        update(NodeLeader)
-        .where(
-          NodeLeader.id == 1,
-          NodeLeader.lease_expires_at < now,
+    
+    with self._get_session() as session:
+      try:
+        # Try to take over expired lease
+        result = session.execute(
+          update(NodeLeader)
+          .where(
+            NodeLeader.id == 1,
+            NodeLeader.lease_expires_at < now,
+          )
+          .values(
+            node_id=node_id,
+            lease_expires_at=new_expiry,
+          )
         )
-        .values(
-          node_id=node_id,
-          lease_expires_at=new_expiry,
-        )
-      )
 
-      if result.rowcount == 1:
+        if result.rowcount == 1:
+          session.commit()
+          if self._logger:
+            self._logger.debug(f"Leadership acquired (new node id: {node_id})")
+          return True
+
+        # Check if row exists
+        exists = session.execute(
+          select(NodeLeader.id).where(NodeLeader.id == 1)
+        ).first()
+
+        if exists:
+          session.rollback()
+          return False
+
+        # No row → try to create it
+        session.add(
+          NodeLeader(
+            id=1,
+            node_id=node_id,
+            lease_expires_at=new_expiry,
+          )
+        )
         session.commit()
         if self._logger:
-          self._logger.debug(f"Leadership acquired (new node id: {node_id})")
+          self._logger.debug(f"Leadership acquired first time (node id: {node_id})")
         return True
-
-      # Check if row exists
-      exists = session.execute(
-        select(NodeLeader.id).where(NodeLeader.id == 1)
-      ).first()
-
-      if exists:
-        session.rollback()
-        return False
-
-      # No row → try to create it
-      session.add(
-        NodeLeader(
-          id=1,
-          node_id=node_id,
-          lease_expires_at=new_expiry,
-        )
-      )
-      session.commit()
-      if self._logger:
-        self._logger.debug(f"Leadership acquired first time (node id: {node_id})")
-      return True
-    except IntegrityError:
+      except IntegrityError:
         # Someone else won the race to insert
         session.rollback()
         return False
-    except Exception:
+      except Exception:
         session.rollback()
         if self._logger:
-          self._logger.exception("Leader election failed")
-        return False
-    finally:
-        session.close()
+          self._logger.exception("Unexpected error in leader election")
+        raise
 
   
   def renew_leadership(self, node_id):
@@ -639,34 +650,27 @@ class SqlAlchemyNodeLeaderStore(StoreBase):
     """
     now = datetime.now(timezone.utc)
     new_expiry = now + timedelta(seconds=self._node_timeout_sec)
-
-    with self._get_session() as session:
-      result = session.execute(
-        update(NodeLeader)
-        .where(
-          NodeLeader.id == 1,
-          NodeLeader.node_id == node_id,
-          NodeLeader.lease_expires_at >= now
-        )
-        .values(lease_expires_at=new_expiry)
-      )
-
-      session.commit()
-      renewed = result.rowcount == 1
-      if renewed and self._logger:
-        self._logger.debug(f"Leadership renewed (node id: {node_id})")
-      return renewed
     
-
-  def delete_leader_by_id(self, id: int):
-    """Delete the leader record by ID.
-
-    Returns True if deleted successfully, False otherwise.
-    """
     with self._get_session() as session:
-      with session.begin():
-        leader = session.get(Task, id)
-        if leader is None:
-          return False
-        session.delete(leader)
-    return True
+      try:
+        result = session.execute(
+          update(NodeLeader)
+          .where(
+            NodeLeader.id == 1,
+            NodeLeader.node_id == node_id,
+            NodeLeader.lease_expires_at >= now
+          )
+          .values(lease_expires_at=new_expiry)
+        )
+
+        session.commit()
+        renewed = result.rowcount == 1
+        if renewed and self._logger:
+          self._logger.debug(f"Leadership renewed (node id: {node_id})")
+        return renewed
+      except Exception as ex:
+        session.rollback()
+        if self._logger:
+          self._logger.exception(f"Renew leadership failed: {ex}")
+        raise
+    

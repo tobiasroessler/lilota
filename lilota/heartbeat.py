@@ -90,3 +90,5 @@ class Heartbeat(threading.Thread):
     """
     self.stop()
     self.join(timeout)
+    if self.is_alive():
+      raise RuntimeError("Heartbeat thread did not stop!")

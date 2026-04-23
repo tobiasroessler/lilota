@@ -115,9 +115,11 @@ class LilotaSchedulerTestCase(TestCase):
     # Arrange
     lilota = LilotaScheduler(LilotaSchedulerTestCase.DB_URL, node_heartbeat_interval=1.0)
     lilota.start()
+    time.sleep(1.2)
 
     try:
       node: Node = lilota.get_node()
+      print(f"Node1: {node.id}")
       first_seen = node.last_seen_at
       self.assertIsNotNone(first_seen)
     finally:
@@ -128,6 +130,7 @@ class LilotaSchedulerTestCase(TestCase):
 
     # Assert
     node: Node = lilota.get_node()
+    print(f"Node2: {node.id}")
     self.assertEqual(
       node.last_seen_at,
       first_seen,

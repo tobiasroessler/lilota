@@ -8,7 +8,6 @@ from lilota.heartbeat import Heartbeat
 from lilota.utils import exception_to_dict, error_to_dict
 import logging
 import os
-import signal
 import threading
 import time
 
@@ -53,10 +52,7 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
     super().execute()
 
     # Try to set leader and the leader should trigger a cleanup
-    try:
-      self._try_set_leader_and_run_maintenance()
-    except Exception:
-      self._logger.exception("Leader election failed")
+    self._try_set_leader_and_run_maintenance()
 
 
   def _try_set_leader_and_run_maintenance(self):
@@ -300,9 +296,9 @@ class LilotaWorker(LilotaNode):
             # Set status to completed
             self._task_store.end_task_success(task_id, result)
           except Exception as ex:
-            # Set status to failed
+            self._logger.exception(f"Task execution failed (id: {task_id})")
             self._task_store.end_task_failure(task_id, exception_to_dict(ex))
-            logger.exception(f"Task execution failed (id: {task_id})")
+            raise
       else:
         # Increase the interval
         interval = min(interval * 2, self._max_task_heartbeat_interval)
@@ -330,7 +326,7 @@ class LilotaWorker(LilotaNode):
       logger.error(f"The process will be stopped because the task '{task.name}' ({task.id}) has expired")
 
       # Kill the worker process
-      os.kill(os.getpid(), signal.SIGKILL)
+      os._exit(1)
 
     timer = threading.Timer(timeout, watchdog)
     timer.start()

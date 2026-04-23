@@ -46,5 +46,17 @@ def main():
   lilota.stop()
 
 
-if __name__ == "__main__":
+try:
   main()
+except Exception as e:
+  import json, traceback, sys
+  print(json.dumps({
+      "type": type(e).__name__,
+      "message": str(e),
+      "traceback": traceback.format_exc()
+  }), file=sys.stderr)
+  sys.exit(1)
+
+
+# if __name__ == "__main__":
+#   main()

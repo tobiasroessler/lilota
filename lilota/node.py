@@ -118,14 +118,14 @@ class LilotaNode(ABC):
       self._node_store = SqlAlchemyNodeStore(self._db_url, self._logger)
       self._task_store = SqlAlchemyTaskStore(self._db_url, self._logger, self._should_set_progress_manually())
 
-      # Create node with status STARTING
-      self._node_id = self._node_store.create_node(self._node_type, NodeStatus.IDLE)
+      # Create node with status IDLE
+      self._node_id = self._node_store.create_node(self._node_type, NodeStatus.RUNNING)
 
       # Create a context logger
       self._logger = create_context_logger(self._logger, node_id=self._node_id)
-
-    # Change status to RUNNING
-    self._node_store.update_node_status(self._node_id, NodeStatus.RUNNING)
+    else:
+      # Change status to RUNNING
+      self._node_store.update_node_status(self._node_id, NodeStatus.RUNNING)
 
     # Set the node as started
     self._is_started = True
@@ -149,11 +149,8 @@ class LilotaNode(ABC):
     if not self._is_started:
       raise Exception("The node cannot be stopped because it was not started")
 
-    # Change status to STOPPING
-    self._node_store.update_node_status(self._node_id, NodeStatus.STOPPING)
-
-    # Stop additional stuff
-    self._on_stop()
+    # Stop node heartbeat
+    self._stop_node_heartbeat()
 
     # Change status to IDLE
     self._node_store.update_node_status(self._node_id, NodeStatus.IDLE)
@@ -227,16 +224,6 @@ class LilotaNode(ABC):
 
     Subclasses should implement this method to start any required
     background threads, heartbeats, or task loops.
-    """
-    pass
-
-
-  @abstractmethod
-  def _on_stop(self):
-    """Hook executed when the node is stopping.
-
-    Subclasses should implement this method to clean up resources
-    such as threads or background workers.
     """
     pass
 

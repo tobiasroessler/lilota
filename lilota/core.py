@@ -1,140 +1,160 @@
-import importlib.util
+import atexit
+from enum import Enum
 from lilota.heartbeat import Heartbeat, HeartbeatTask
 from lilota.logging import configure_logging
 from lilota.models import Node
 from lilota.scheduler import LilotaScheduler
 from lilota.stores import SqlAlchemyNodeStore, SqlAlchemyTaskStore
 import logging
-from multiprocessing import cpu_count, Queue, Process
+from multiprocessing import cpu_count, Queue
 import os
-from queue import Empty
 import sys
-import traceback
-from typing import Any, Callable
+import subprocess
+import signal
+from typing import Any, List
 from uuid import UUID, uuid4
+import threading
 
 
 
-def _run_script(script_path: str, error_queue: Queue) -> None:
-  try:
-    spec = importlib.util.spec_from_file_location("__main__", script_path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-  except Exception as ex:
-    error_queue.put(
-      {
-        "pid": os.getpid(),
-        "type": type(ex).__name__,
-        "message": str(ex),
-        "traceback": traceback.format_exc()
-      }
+class ManagedProcess:
+  
+  def __init__(self, proc: subprocess.Popen, script_path: str):
+    self.id = uuid4()
+    self.proc = proc
+    self.script_path = script_path
+
+
+
+class ProcessManager:
+
+  def __init__(self, on_fatal_error=None):
+    """Initializes the ProcessManager.
+
+    Args:
+      on_fatal_error (Callable[[str], None] | None): Optional callback that is
+        invoked when a managed process exits with an error. The callback
+        receives the stderr output of the failed process.
+    """
+    self._on_fatal_error = on_fatal_error
+    self._processes: List[ManagedProcess] = []
+
+
+  def start(self, script_path: str) -> subprocess.Popen:
+    """Starts a new subprocess running the given Python script.
+
+    The process is launched using the current Python interpreter and added
+    to the internal list of managed processes.
+
+    Args:
+      script_path (str): Path to the Python script to execute.
+
+    Returns:
+      subprocess.Popen: The Popen object representing the started process.
+    """
+    proc = subprocess.Popen(
+      [sys.executable, script_path],
+      stdout=subprocess.PIPE,
+      stderr=subprocess.PIPE,
+      text=True,
+      preexec_fn=os.setsid if os.name != "nt" else None,
+      creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
     )
-    sys.exit(1)
+
+    self._processes.append(ManagedProcess(proc, script_path))
+    return proc
 
 
+  def monitor(self):
+    """Monitors managed processes for termination and handles restarts.
 
-class WorkerProcess(Process):
+    Iterates over all managed processes and checks whether they have exited.
+    If a process exits with a non-zero return code and produces stderr output,
+    all processes are stopped and the fatal error callback is invoked.
 
-  def __init__(self, id: UUID, group = None, target = None, name = None, args = (), kwargs = {}, *, daemon = None):
-    super().__init__(group, target, name, args, kwargs, daemon=daemon)
-    self.id = id
+    If a process exits successfully, it is automatically restarted using
+    the original script path.
+    """
+    for mp in list(self._processes):
+      proc = mp.proc
+      returncode = proc.poll()
+
+      if returncode is not None:  # process exited
+        # This cannot be debugged. Use print statements because if the worker is killed also the debugger stops.
+        stdout, stderr = proc.communicate()
+
+        # Error handling in case of an exception
+        # = 0: Process exited successfully
+        # > 0:Process exited with an error
+        # < 0: Process was terminated by a signal (Unix only)
+        if returncode != 0 and stderr:
+          self._handle_error(stderr)
+          return
+
+        # Restart process
+        self._processes.remove(mp)
+        self.start(mp.script_path)
+
+
+  def _handle_error(self, stderr: str):
+    # Stop all processes
+    self.stop_all()
+
+    # Signal to caller
+    if self._on_fatal_error:
+      self._on_fatal_error(stderr)
+  
+
+  def stop_all(self, timeout: float = 5.0):
+    """Stops all managed processes gracefully, then forcefully if needed.
+
+    Attempts to terminate all running processes. If a process does not exit
+    within the specified timeout, it is forcefully killed. After stopping,
+    the internal process list is cleared.
+
+    Args:
+      timeout (float): Maximum time in seconds to wait for each process to
+        terminate gracefully before forcefully killing it. Defaults to 5.0.
+    """
+    for mp in self._processes:
+      proc = mp.proc
+      if proc.poll() is None:
+        self._terminate(proc)
+
+    for mp in self._processes:
+      proc = mp.proc
+      try:
+        proc.wait(timeout=timeout)
+      except subprocess.TimeoutExpired:
+        self._kill(proc)
+
+    self._processes.clear()
+
+
+  def _terminate(self, proc):
+    if os.name == "nt":
+      proc.send_signal(signal.CTRL_BREAK_EVENT)
+    else:
+      os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+
+
+  def _kill(self, proc):
+    if os.name == "nt":
+      proc.kill()
+    else:
+      os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
 
 
 
 class ProcessManagerTask(HeartbeatTask):
-  """
-  Periodic task responsible for monitoring child processes and propagating
-  exceptions raised inside them to the parent process.
 
-  The task checks a shared error queue for exceptions reported by child
-  processes. If an error is found, it reconstructs and raises the exception
-  in the parent process context so it can be handled or terminate execution.
-  """
-
-  def __init__(self, interval: float, processes: list[Process], error_queue: Queue, process_factory: Callable[[], WorkerProcess]):
-    """
-    Initialize the process manager task.
-
-    Args:
-        interval (float): Time interval (in seconds) between task executions.
-        processes (list[Process]): List of managed child processes.
-        error_queue (Queue): Queue used by child processes to report
-            exceptions back to the parent process. Each entry is expected
-            to contain a dictionary with exception metadata.
-        process_factory (Callable[[], Process]): Function that creates a new worker
-            process and returns it.
-    """
+  def __init__(self, interval: float, process_manager: ProcessManager):
     super().__init__(interval)
-    self._processes: list[WorkerProcess] = processes
-    self._error_queue: Queue = error_queue
-    self._process_factory = process_factory
+    self._process_manager = process_manager
 
 
   def execute(self):
-    """
-    Execute one monitoring cycle.
-
-    Attempts to retrieve an error report from the error queue without
-    blocking. If an error is present, it will be reconstructed and raised
-    in the parent process via `raise_child_exception`.
-    The processes are also monitored. If a process is no longer alive, 
-    it is removed from the list and a new worker process is started.
-    """
-    self._retrieve_error()
-    self._monitor_processes()
-
-
-  def _retrieve_error(self):
-    try:
-      error = self._error_queue.get_nowait()
-      self.raise_child_exception(error)
-    except Empty:
-      pass
-
-
-  def _monitor_processes(self):
-    for i, p in enumerate(self._processes):
-      if p.exitcode is not None:
-        new_process = self._process_factory()
-        self._processes[i] = new_process
-        new_process.start()
-    
-
-  def raise_child_exception(self, error_info):
-    """
-    Reconstruct and raise an exception originating from a child process.
-
-    The error information is expected to be a dictionary containing:
-        - "type": Name of the exception class
-        - "message": Original exception message
-        - "traceback": Serialized traceback string from the child process
-
-    The method attempts to recreate the exception using the built-in
-    exception class matching the provided type name. If the exception
-    type cannot be resolved, a RuntimeError is used as a fallback.
-
-    Args:
-        error_info (dict): Dictionary containing exception metadata from
-            a child process.
-
-    Raises:
-        Exception: Reconstructed exception with the original message and
-        appended child traceback.
-    """
-    exc_type = error_info["type"]
-    exc_message = error_info["message"]
-    tb = error_info["traceback"]
-
-    # Create a new exception instance with the same message
-    # Fallback to RuntimeError if type unknown
-    try:
-      # Get exception class from builtins
-      exc_cls = getattr(__builtins__, exc_type)
-    except AttributeError:
-      exc_cls = RuntimeError
-
-    # Raise it with original message, attach traceback
-    raise exc_cls(f"{exc_message}\nChild traceback:\n{tb}")
+    self._process_manager.monitor()
 
 
 
@@ -150,8 +170,16 @@ class Lilota():
   Workers are started as separate Python processes that run the provided
   script file as a module entry point.
   """
-
-  def __init__(self, db_url: str, script_path: str, number_of_workers: int = cpu_count(), scheduler_heartbeat_interval: float = 5, scheduler_timeout_sec: int = 20, process_manager_interval: float = 1.0, stop_worker_timeout: int = 60, logging_level = logging.INFO):
+  def __init__(
+      self, 
+      db_url: str, 
+      script_path: str = None, 
+      number_of_workers: int = cpu_count(), 
+      scheduler_heartbeat_interval: float = 5, 
+      scheduler_timeout_sec: int = 20, 
+      process_manager_interval: float = 1.0, 
+      stop_worker_timeout: int = 60, 
+      logging_level = logging.INFO):
     """Create a new Lilota runtime instance.
 
     Args:
@@ -181,14 +209,21 @@ class Lilota():
       logging_level (int, optional):
         Logging level used by the scheduler. Defaults to logging.INFO.
     """
+    number_of_cpus = cpu_count()
+    if number_of_workers > number_of_cpus:
+      raise Exception(f"number_of_workers cannot be greater than {number_of_cpus}")
+
+
     self._db_url = db_url
     self._script_path = script_path
     self._number_of_workers = number_of_workers
     self._process_manager_interval = process_manager_interval
     self._stop_worker_timeout = stop_worker_timeout
-    self._error_queue: Queue = None
-    self._processes: list[WorkerProcess] = []
     self._process_manager_heartbeat: Heartbeat = None
+    self._process_manager = ProcessManager(on_fatal_error=self._handle_fatal_error)
+    self._error = None
+    self._error_event = threading.Event()
+    atexit.register(self._process_manager.stop_all)
     
     self._scheduler = LilotaScheduler(
       db_url=db_url,
@@ -200,6 +235,44 @@ class Lilota():
     self._node_store = SqlAlchemyNodeStore(self._db_url, None)
     self._task_store = SqlAlchemyTaskStore(self._db_url, None)
     self._is_started = False
+
+
+  @property
+  def error(self):
+    """Return the last fatal error encountered by the system.
+
+    Returns:
+      Any: The error object or message captured from a worker process,
+      or None if no error has occurred.
+    """
+    return self._error
+  
+
+  def has_failed(self) -> bool:
+    """Check whether a fatal error has occurred.
+
+    Returns:
+      bool: True if a fatal error has been detected, otherwise False.
+    """
+    return self._error_event.is_set()
+  
+
+  def wait_for_failure(self, timeout=None):
+    """Block until a fatal error occurs or a timeout is reached.
+
+    Args:
+      timeout (float | None, optional): Maximum time in seconds to wait.
+        If None, waits indefinitely.
+
+    Returns:
+      bool: True if a failure occurred before the timeout, False otherwise.
+    """
+    return self._error_event.wait(timeout)
+
+
+  def _handle_fatal_error(self, error):
+    self._error = error
+    self._error_event.set()
 
 
   def start(self):
@@ -224,28 +297,16 @@ class Lilota():
 
 
   def _start_workers(self):
-    # Start processes
+    # Start scripts
     for _ in range(self._number_of_workers):
-      p = self._create_process()
-      p.start()
-      self._processes.append(p)
-
-
-  def _create_process(self):
-    return WorkerProcess(
-      id=uuid4(),
-      target=_run_script,
-      args=(self._script_path, self._error_queue)
-    )
+      self._process_manager.start(self._script_path)
 
 
   def _start_process_manager(self):
     # Start the process manager
     process_manager_task = ProcessManagerTask(
       interval=self._process_manager_interval,
-      processes=self._processes,
-      error_queue=self._error_queue,
-      process_factory=self._create_process
+      process_manager=self._process_manager
     )
     self._process_manager_heartbeat = Heartbeat(f"process_manager", process_manager_task, None)
     self._process_manager_heartbeat.start()
@@ -272,47 +333,15 @@ class Lilota():
 
 
   def _stop_workers(self):
-    for p in self._processes:
-      if p.is_alive():
-        # Ask process to terminate nicely
-        p.terminate()
-
-    # Give them a chance to exit
-    for p in self._processes:
-      p.join(self._stop_worker_timeout)
-
-    # Force kill if still alive (usually not needed, but safe)
-    for p in self._processes:
-      if p.is_alive():
-        p.kill()
-        p.join()
-
-    # Remove all processes from the list
-    self._processes.clear()
+    self._process_manager.stop_all(self._stop_worker_timeout)
 
 
   def _stop_process_manager(self):
-    # Stop the process manager
     if self._process_manager_heartbeat:
-      self._process_manager_heartbeat.stop_and_join(timeout=self._stop_worker_timeout)
+      self._process_manager_heartbeat.stop_and_join(
+        timeout=self._stop_worker_timeout
+      )
       self._process_manager_heartbeat = None
-
-    # Close the error queue
-    if self._error_queue:
-      self._error_queue.close()
-      self._error_queue.join_thread()
-      self._error_queue = None
-
-
-  def join(self):
-    """Block until all worker processes have finished.
-
-    This is typically used in long-running worker setups where the main
-    process should wait until workers exit.
-    """
-    for p in self._processes:
-      if p.is_alive():
-        p.join()
 
 
   def schedule(self, name: str, input: Any = None) -> int:
