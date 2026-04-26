@@ -13,6 +13,7 @@ from lilota.models import Node, NodeLeader, Task, TaskStatus, LogEntry, NodeType
 from lilota.db.alembic import get_alembic_config
 from lilota.stores import SqlAlchemyLogStore
 from lilota.worker import LilotaWorker
+from pathlib import Path
 import time
 from uuid import UUID
 
@@ -189,7 +190,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py",
+      script_path=str(Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"),
       number_of_workers=8
     )
 
@@ -211,10 +212,11 @@ class LilotaTestCase(TestCase):
 
 
   def test_schedule___add_1_hello_world_task___should_execute_task(self):
+    print(Path(__file__).resolve().parent)
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/hello_world_test_script.py",
+      script_path=str(Path(__file__).resolve().parent / "scripts" / "hello_world_test_script.py"),
       number_of_workers=1
     )
     lilota.start()
@@ -242,7 +244,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py",
+      script_path=str(Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"),
       number_of_workers=1
     )
     lilota.start()
@@ -270,7 +272,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py",
+      script_path=str(Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"),
       number_of_workers=1
     )
     lilota.start()
@@ -300,7 +302,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/taskprogress_test_script.py",
+      script_path=str(Path(__file__).resolve().parent / "scripts" / "taskprogress_test_script.py"),
       number_of_workers=1
     )
     lilota.start()
@@ -324,7 +326,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py",
+      script_path=str(Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"),
       number_of_workers=1
     )
     lilota.start()
@@ -354,7 +356,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/taskprogress_test_script.py",
+      script_path=str(Path(__file__).resolve().parent / "scripts" / "taskprogress_test_script.py"),
       number_of_workers=1
     )
     lilota.start()
@@ -378,7 +380,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py",
+      script_path=str(Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"),
       number_of_workers=1
     )
     lilota.start()
@@ -408,7 +410,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py",
+      script_path=str(Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"),
       number_of_workers=1
     )
     lilota.start()
@@ -438,7 +440,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py",
+      script_path=str(Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"),
       number_of_workers=1
     )
     lilota.start()
@@ -460,7 +462,7 @@ class LilotaTestCase(TestCase):
     ids = []
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py"
+      script_path=str(Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"),
     )
     lilota.start()
 
@@ -498,7 +500,7 @@ class LilotaTestCase(TestCase):
     ids = []
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py",
+      script_path=str(Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"),
       number_of_workers=1
     )
     lilota.start()
@@ -538,7 +540,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py",
+      script_path=str(Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"),
       number_of_workers=1
     )
     lilota.start()
@@ -567,7 +569,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/lilota_test_script.py",
+      script_path=str(Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"),
       number_of_workers=2,
       logging_level=logging.DEBUG
     )
@@ -614,7 +616,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/infinite_loop_test_script.py",
+      script_path=str(Path(__file__).resolve().parent / "scripts" / "infinite_loop_test_script.py"),
       number_of_workers=1,
       logging_level=logging.DEBUG
     )
@@ -654,7 +656,7 @@ class LilotaTestCase(TestCase):
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
-      script_path="/Users/torox/Sandbox/Python/lilota/lilota/tests/scripts/exception_test_script.py",
+      script_path=str(Path(__file__).resolve().parent / "scripts" / "exception_test_script.py"),
       number_of_workers=1,
       logging_level=logging.DEBUG
     )
