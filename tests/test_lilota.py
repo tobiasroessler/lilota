@@ -107,7 +107,7 @@ class LilotaTestCase(TestCase):
     with self.assertRaises(ValueError) as ctx:
       Lilota(
         db_url=self.DB_URL,
-        mode=LilotaMode.WORKER,
+        mode=LilotaMode.WORKERS,
         script_path="dummy.py",
         number_of_workers=0
       )
@@ -143,7 +143,7 @@ class LilotaTestCase(TestCase):
     with self.assertRaises(ValueError) as ctx:
       Lilota(
         db_url=self.DB_URL,
-        mode=LilotaMode.WORKER,
+        mode=LilotaMode.WORKERS,
         script_path="dummy.py",
         number_of_workers=too_many
       )

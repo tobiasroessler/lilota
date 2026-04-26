@@ -163,11 +163,11 @@ class LilotaMode(str, Enum):
 
   Attributes:
     SCHEDULER: Run only the scheduler component.
-    WORKER: Run only worker processes.
+    WORKERS: Run only worker processes.
     ALL: Run both scheduler and workers.
   """
   SCHEDULER = "scheduler"
-  WORKER = "worker"
+  WORKERS = "workers"
   ALL = "all"
 
 
@@ -206,7 +206,7 @@ class Lilota():
   
 
   @classmethod
-  def worker(cls, db_url: str, script_path: str, number_of_workers: int, **kwargs):
+  def workers(cls, db_url: str, script_path: str, number_of_workers: int, **kwargs):
     """Create a Lilota instance running only worker processes.
 
     Args:
@@ -219,36 +219,14 @@ class Lilota():
       Lilota: Configured instance in worker-only mode.
     """
     return cls(
-      mode=LilotaMode.WORKER,
-      db_url=db_url,
-      script_path=script_path,
-      number_of_workers=number_of_workers,
-      **kwargs
-    )
-
-
-  @classmethod
-  def all(cls, db_url: str, script_path: str, number_of_workers: int, **kwargs):
-    """Create a Lilota instance running both scheduler and workers.
-
-    Args:
-      db_url (str): Database connection URL.
-      script_path (str): Path to the worker script.
-      number_of_workers (int): Number of worker processes to spawn.
-      **kwargs: Additional keyword arguments passed to the constructor.
-
-    Returns:
-      Lilota: Configured instance running both scheduler and workers.
-    """
-    return cls(
-      mode=LilotaMode.ALL,
+      mode=LilotaMode.WORKERS,
       db_url=db_url,
       script_path=script_path,
       number_of_workers=number_of_workers,
       **kwargs
     )
   
-
+  
   def __init__(
     self, 
     db_url: str, 
@@ -294,7 +272,7 @@ class Lilota():
       logging_level (int, optional):
         Logging level used by the scheduler. Defaults to logging.INFO.
     """
-    if mode in (LilotaMode.WORKER, LilotaMode.ALL):
+    if mode in (LilotaMode.WORKERS, LilotaMode.ALL):
       if number_of_workers <= 0:
         raise ValueError("number_of_workers must be > 0 in WORKER or ALL mode")
       
@@ -314,12 +292,13 @@ class Lilota():
     self._error_event = threading.Event()
     atexit.register(self._process_manager.stop_all)
     
-    self._scheduler = LilotaScheduler(
-      db_url=db_url,
-      node_heartbeat_interval=scheduler_heartbeat_interval,
-      node_timeout_sec=scheduler_timeout_sec,
-      logging_level=logging_level
-    )
+    if mode in (LilotaMode.SCHEDULER, LilotaMode.ALL):
+      self._scheduler = LilotaScheduler(
+        db_url=db_url,
+        node_heartbeat_interval=scheduler_heartbeat_interval,
+        node_timeout_sec=scheduler_timeout_sec,
+        logging_level=logging_level
+      )
 
     self._node_store = SqlAlchemyNodeStore(self._db_url, None)
     self._task_store = SqlAlchemyTaskStore(self._db_url, None)
@@ -380,7 +359,7 @@ class Lilota():
     if self._mode in (LilotaMode.SCHEDULER, LilotaMode.ALL):
       self._start_scheduler()
 
-    if self._mode in (LilotaMode.WORKER, LilotaMode.ALL):
+    if self._mode in (LilotaMode.WORKERS, LilotaMode.ALL):
       if not self._script_path:
         raise ValueError("script_path must be provided in WORKER or ALL mode")
       self._start_workers()
@@ -426,7 +405,7 @@ class Lilota():
     if self._mode in (LilotaMode.SCHEDULER, LilotaMode.ALL):
       self._stop_scheduler()
 
-    if self._mode in (LilotaMode.WORKER, LilotaMode.ALL):
+    if self._mode in (LilotaMode.WORKERS, LilotaMode.ALL):
       self._stop_process_manager()
       self._stop_workers()
 
