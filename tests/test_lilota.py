@@ -212,7 +212,6 @@ class LilotaTestCase(TestCase):
 
 
   def test_schedule___add_1_hello_world_task___should_execute_task(self):
-    print(Path(__file__).resolve().parent)
     # Arrange
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
