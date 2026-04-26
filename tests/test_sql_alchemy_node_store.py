@@ -10,7 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from lilota.models import Node, NodeStatus, NodeType
 from lilota.db.alembic import get_alembic_config
-from lilota.stores import SqlAlchemyNodeStore
+from lilota.stores import NodeStore
 
 
 
@@ -44,7 +44,7 @@ class SqlAlchemyNodeStoreTestCase(TestCase):
   def test_create_node___should_persist_node(self):
     # Arrange
     logger = logging.getLogger("test_logger")
-    store = SqlAlchemyNodeStore(self.DB_URL, logger)
+    store = NodeStore(self.DB_URL, logger)
 
     # Act
     node_id = store.create_node(NodeType.WORKER)
@@ -60,7 +60,7 @@ class SqlAlchemyNodeStoreTestCase(TestCase):
   def test_get_all_nodes___with_no_nodes___should_return_empty_list(self):
     # Arrange
     logger = logging.getLogger("test_logger")
-    store = SqlAlchemyNodeStore(self.DB_URL, logger)
+    store = NodeStore(self.DB_URL, logger)
 
     # Act
     nodes = store.get_all_nodes()
@@ -74,7 +74,7 @@ class SqlAlchemyNodeStoreTestCase(TestCase):
     logger = logging.getLogger("test_logger")
     id1 = self.create_node(Node(type=NodeType.WORKER, status=NodeStatus.IDLE))
     id2 = self.create_node(Node(type=NodeType.SCHEDULER, status=NodeStatus.IDLE))
-    store = SqlAlchemyNodeStore(self.DB_URL, logger)
+    store = NodeStore(self.DB_URL, logger)
 
     # Act
     nodes = store.get_all_nodes()
@@ -88,7 +88,7 @@ class SqlAlchemyNodeStoreTestCase(TestCase):
     # Arrange
     logger = logging.getLogger("test_logger")
     node_id = self.create_node(Node(type=NodeType.WORKER, status=NodeStatus.IDLE))
-    store = SqlAlchemyNodeStore(self.DB_URL, logger)
+    store = NodeStore(self.DB_URL, logger)
 
     # Act
     node = store.get_node_by_id(node_id)
@@ -101,7 +101,7 @@ class SqlAlchemyNodeStoreTestCase(TestCase):
   def test_get_node_by_id___non_existing_node___should_return_none(self):
     # Arrange
     logger = logging.getLogger("test_logger")
-    store = SqlAlchemyNodeStore(self.DB_URL, logger)
+    store = NodeStore(self.DB_URL, logger)
 
     # Act
     node = store.get_node_by_id(uuid4())
@@ -114,7 +114,7 @@ class SqlAlchemyNodeStoreTestCase(TestCase):
     # Arrange
     logger = logging.getLogger("test_logger")
     node_id = self.create_node(Node(type=NodeType.WORKER, status=NodeStatus.IDLE))
-    store = SqlAlchemyNodeStore(self.DB_URL, logger)
+    store = NodeStore(self.DB_URL, logger)
 
     # Act
     store.update_node_status(node_id, NodeStatus.RUNNING)
@@ -144,7 +144,7 @@ class SqlAlchemyNodeStoreTestCase(TestCase):
 
     exclude_id = node2_id
 
-    store = SqlAlchemyNodeStore(self.DB_URL, logger)
+    store = NodeStore(self.DB_URL, logger)
 
     # Act
     updated_count = store.update_status_on_dead_nodes(
@@ -171,7 +171,7 @@ class SqlAlchemyNodeStoreTestCase(TestCase):
       last_seen_at=old_time
     ))
 
-    store = SqlAlchemyNodeStore(self.DB_URL, logger)
+    store = NodeStore(self.DB_URL, logger)
 
     # Act
     updated_count = store.update_status_on_dead_nodes(
@@ -195,7 +195,7 @@ class SqlAlchemyNodeStoreTestCase(TestCase):
       last_seen_at=None
     ))
 
-    store = SqlAlchemyNodeStore(self.DB_URL, logger)
+    store = NodeStore(self.DB_URL, logger)
 
     # Act
     store.update_node_last_seen_at(node_id)

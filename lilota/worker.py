@@ -3,7 +3,7 @@ from typing import Callable, Type, Optional, Any
 from lilota.node import LilotaNode, NodeHeartbeatTask
 from lilota.models import NodeType, Task, TaskProgress, RegisteredTask
 from lilota.logging import create_context_logger
-from lilota.stores import SqlAlchemyNodeStore, SqlAlchemyNodeLeaderStore, SqlAlchemyTaskStore
+from lilota.stores import NodeStore, NodeLeaderStore, TaskStore
 from lilota.heartbeat import Heartbeat
 from lilota.utils import exception_to_dict, error_to_dict
 import logging
@@ -21,7 +21,7 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
   maintenance tasks such as cleaning up stale nodes.
   """
 
-  def __init__(self, interval: float, node_id: str, node_timeout_sec: int, node_store: SqlAlchemyNodeStore, node_leader_store: SqlAlchemyNodeLeaderStore, task_store: SqlAlchemyTaskStore, logger: logging.Logger):
+  def __init__(self, interval: float, node_id: str, node_timeout_sec: int, node_store: NodeStore, node_leader_store: NodeLeaderStore, task_store: TaskStore, logger: logging.Logger):
     """Initialize the worker heartbeat task.
 
     Args:
@@ -234,7 +234,7 @@ class LilotaWorker(LilotaNode):
 
   def _on_started(self):
     # Create node leader store
-    node_leader_store = SqlAlchemyNodeLeaderStore(self._db_url, self._logger, self._node_timeout_sec)
+    node_leader_store = NodeLeaderStore(self._db_url, self._logger, self._node_timeout_sec)
 
     # Start worker heartbeat thread
     heartbeat_task = WorkerHeartbeatTask(

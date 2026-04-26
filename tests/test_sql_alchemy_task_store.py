@@ -10,7 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from lilota.models import Task, TaskStatus
 from lilota.db.alembic import get_alembic_config
-from lilota.stores import SqlAlchemyTaskStore
+from lilota.stores import TaskStore
 
 
 
@@ -47,7 +47,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
     worker_id = uuid4()
     logger = logging.getLogger("test_logger")
     self.delete_all_tasks()
-    store = SqlAlchemyTaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+    store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
 
     # Act
     task: Task = store.get_next_task(worker_id)
@@ -67,7 +67,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
       locked_by=None,
       locked_at=None
     ))
-    store = SqlAlchemyTaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+    store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
 
     # Act
     next_task: Task = store.get_next_task(worker_id)
@@ -101,7 +101,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
           status=status,
           run_at=datetime.now(timezone.utc)
         ))
-        store = SqlAlchemyTaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
 
         # Act
         next_task: Task = store.get_next_task(worker_id)
@@ -124,7 +124,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
       status=TaskStatus.CREATED,
       run_at=datetime.now(timezone.utc)
     ))
-    store = SqlAlchemyTaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+    store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
 
     # Act
     next_task: Task = store.get_next_task(worker_id)
@@ -143,7 +143,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
       run_at=datetime(2026, 3, 20, 0, 0, 0),
       expires_at=datetime(2026, 3, 20, 1, 0, 0)
     ))
-    store = SqlAlchemyTaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+    store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
 
     # Act
     store.expire_overdue_tasks()
@@ -162,7 +162,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
       run_at=datetime(2026, 3, 20, 0, 0, 0),
       expires_at=None
     ))
-    store = SqlAlchemyTaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+    store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
 
     # Act
     store.expire_overdue_tasks()
@@ -181,7 +181,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
       run_at=datetime(2026, 3, 20, 0, 0, 0),
       expires_at=datetime(2026, 3, 20, 1, 0, 0)
     ))
-    store = SqlAlchemyTaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+    store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
 
     # Act
     store.expire_overdue_tasks()
@@ -200,7 +200,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
       run_at=datetime.now(timezone.utc) + timedelta(minutes=5),
       timeout=None
     ))
-    store = SqlAlchemyTaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+    store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
 
     # Act
     task: Task = store.start_task(task_id, 1)
@@ -224,7 +224,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
       status=TaskStatus.CREATED,
       run_at=datetime.now(timezone.utc) + timedelta(minutes=5)
     ))
-    store = SqlAlchemyTaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+    store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
 
     # Act
     task: Task = store.start_task(task_id, 1, timedelta(seconds=timeout_in_sec))
@@ -247,7 +247,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
       status=TaskStatus.CREATED,
       run_at=datetime.now(timezone.utc) + timedelta(minutes=5)
     ))
-    store = SqlAlchemyTaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+    store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
 
     # Act
     task: Task = store.start_task(task_id, 1, None)
@@ -265,7 +265,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
   def test_retry_tasks___with_no_tasks___should_return_zero(self):
     # Arrange
     logger = logging.getLogger("test_logger")
-    store = SqlAlchemyTaskStore(self.DB_URL, logger, False)
+    store = TaskStore(self.DB_URL, logger, False)
 
     # Act
     result = store.retry_tasks()
@@ -286,7 +286,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
       max_attempts=3
     ))
 
-    store = SqlAlchemyTaskStore(self.DB_URL, logger, False)
+    store = TaskStore(self.DB_URL, logger, False)
 
     # Act
     result = store.retry_tasks()
@@ -319,7 +319,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
       expires_at=past
     ))
 
-    store = SqlAlchemyTaskStore(self.DB_URL, logger, False)
+    store = TaskStore(self.DB_URL, logger, False)
 
     # Act
     result = store.retry_tasks()
@@ -340,7 +340,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
       max_attempts=3
     ))
 
-    store = SqlAlchemyTaskStore(self.DB_URL, logger, False)
+    store = TaskStore(self.DB_URL, logger, False)
 
     # Act
     result = store.retry_tasks()
@@ -363,7 +363,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
     )
 
     self.create_task(task)
-    store = SqlAlchemyTaskStore(self.DB_URL, logger, False)
+    store = TaskStore(self.DB_URL, logger, False)
 
     # Act
     result = store.retry_tasks()
@@ -385,7 +385,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
       max_attempts=5
     ))
 
-    store = SqlAlchemyTaskStore(self.DB_URL, logger, False)
+    store = TaskStore(self.DB_URL, logger, False)
 
     # Act
     before = datetime.now(timezone.utc)
@@ -414,7 +414,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
         max_attempts=3
       ))
 
-    store = SqlAlchemyTaskStore(self.DB_URL, logger, False)
+    store = TaskStore(self.DB_URL, logger, False)
 
     # Act
     result = store.retry_tasks(batch_size=2)

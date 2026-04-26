@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from lilota.models import NodeType, NodeStatus
-from lilota.stores import SqlAlchemyNodeStore, SqlAlchemyTaskStore
+from lilota.stores import NodeStore, TaskStore
 from lilota.heartbeat import Heartbeat, HeartbeatTask
 from lilota.db.alembic import upgrade_db
 from lilota.logging import configure_logging, create_context_logger
@@ -16,7 +16,7 @@ class NodeHeartbeatTask(HeartbeatTask):
   associated node in the database to indicate that the node is still alive.
   """
 
-  def __init__(self, interval: float, node_id: str, node_store: SqlAlchemyNodeStore, logger: logging.Logger):
+  def __init__(self, interval: float, node_id: str, node_store: NodeStore, logger: logging.Logger):
     """Initialize the heartbeat task.
 
     Args:
@@ -115,8 +115,8 @@ class LilotaNode(ABC):
 
     if not self._node_id:
       # Create stores
-      self._node_store = SqlAlchemyNodeStore(self._db_url, self._logger)
-      self._task_store = SqlAlchemyTaskStore(self._db_url, self._logger, self._should_set_progress_manually())
+      self._node_store = NodeStore(self._db_url, self._logger)
+      self._task_store = TaskStore(self._db_url, self._logger, self._should_set_progress_manually())
 
       # Create node with status IDLE
       self._node_id = self._node_store.create_node(self._node_type, NodeStatus.RUNNING)

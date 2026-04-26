@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from lilota.worker import LilotaWorker
 from lilota.models import Node, NodeType, NodeStatus, NodeLeader, Task, TaskStatus, LogEntry
 from lilota.db.alembic import get_alembic_config
-from lilota.stores import SqlAlchemyTaskStore, SqlAlchemyLogStore
+from lilota.stores import TaskStore, LogStore
 import logging
 import time
 from datetime import datetime
@@ -224,7 +224,7 @@ class LilotaWorkerTestCase(TestCase):
   def test_logging___when_starting_scheduler___should_log_correctly(self):
     # Arrange
     worker = LilotaWorker(LilotaWorkerTestCase.DB_URL, logging_level=logging.DEBUG)
-    log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaWorkerTestCase.DB_URL)
+    log_store: LogStore = LogStore(LilotaWorkerTestCase.DB_URL)
 
     # Act
     t = threading.Thread(target=worker.start, daemon=True)
@@ -249,7 +249,7 @@ class LilotaWorkerTestCase(TestCase):
     # Arrange
     worker1 = LilotaWorker(LilotaWorkerTestCase.DB_URL, logging_level=logging.DEBUG)
     worker2 = LilotaWorker(LilotaWorkerTestCase.DB_URL, logging_level=logging.DEBUG)
-    log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaWorkerTestCase.DB_URL)
+    log_store: LogStore = LogStore(LilotaWorkerTestCase.DB_URL)
 
     # Act
     t1 = threading.Thread(target=worker1.start, daemon=True)
@@ -283,7 +283,7 @@ class LilotaWorkerTestCase(TestCase):
 
   def test_leadership___with_one_worker___should_set_this_worker_as_leader(self):
     # Arrange
-    log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaWorkerTestCase.DB_URL)
+    log_store: LogStore = LogStore(LilotaWorkerTestCase.DB_URL)
 
     with LilotaWorkerTestCase.get_session() as session:
       session.query(NodeLeader).delete()
@@ -320,7 +320,7 @@ class LilotaWorkerTestCase(TestCase):
 
   def test_leadership___with_two_workers_and_first_one_expires___should_set_second_worker_as_leader(self):
     # Arrange
-    log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaWorkerTestCase.DB_URL)
+    log_store: LogStore = LogStore(LilotaWorkerTestCase.DB_URL)
 
     with LilotaWorkerTestCase.get_session() as session:
       session.query(NodeLeader).delete()
@@ -430,7 +430,7 @@ class LilotaWorkerTestCase(TestCase):
       run_at=datetime(2026, 3, 20, 0, 0, 0),
       expires_at=datetime(2026, 3, 20, 1, 0, 0)
     ))
-    store = SqlAlchemyTaskStore(LilotaWorkerTestCase.DB_URL, logger, False)
+    store = TaskStore(LilotaWorkerTestCase.DB_URL, logger, False)
     worker = LilotaWorker(LilotaWorkerTestCase.DB_URL, logging_level=logging.DEBUG)
     
     # Act

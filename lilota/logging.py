@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 from .models import LogEntry
-from .stores import SqlAlchemyLogStore
+from .stores import LogStore
 
 
 class SqlAlchemyHandler(logging.Handler):
@@ -12,14 +12,14 @@ class SqlAlchemyHandler(logging.Handler):
   into a :class:`LogEntry` model instance.
   """
 
-  def __init__(self, log_store: SqlAlchemyLogStore):
+  def __init__(self, log_store: LogStore):
     """Initialize the logging handler.
 
     Args:
       log_store (SqlAlchemyLogStore): Store used to persist log entries.
     """
     super().__init__()
-    self.log_store: SqlAlchemyLogStore = log_store
+    self.log_store: LogStore = log_store
 
 
   def emit(self, record: logging.LogRecord) -> None:
@@ -116,7 +116,7 @@ def configure_logging(db_url: str, logger_name: str, logging_level: int) -> logg
   logger = logging.getLogger(logger_name)
   logger.setLevel(logging_level)
   logger.handlers.clear()
-  db_handler = SqlAlchemyHandler(SqlAlchemyLogStore(db_url))
+  db_handler = SqlAlchemyHandler(LogStore(db_url))
   db_handler.setLevel(logging_level)
   db_handler.setFormatter(logging.Formatter("%(message)s"))
   db_handler.addFilter(LilotaLoggingFilter())

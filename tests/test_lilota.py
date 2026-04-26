@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from lilota.core import Lilota, LilotaMode, ManagedProcess
 from lilota.models import Node, NodeLeader, Task, TaskStatus, LogEntry, NodeType
 from lilota.db.alembic import get_alembic_config
-from lilota.stores import SqlAlchemyLogStore
+from lilota.stores import LogStore
 from lilota.worker import LilotaWorker
 from pathlib import Path
 import time
@@ -572,7 +572,7 @@ class LilotaTestCase(TestCase):
       number_of_workers=2,
       logging_level=logging.DEBUG
     )
-    log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaTestCase.DB_URL)
+    log_store: LogStore = LogStore(LilotaTestCase.DB_URL)
 
     # Act
     try:
@@ -619,7 +619,7 @@ class LilotaTestCase(TestCase):
       number_of_workers=1,
       logging_level=logging.DEBUG
     )
-    log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaTestCase.DB_URL)
+    log_store: LogStore = LogStore(LilotaTestCase.DB_URL)
     lilota.start()
     process: ManagedProcess = None
     process_id: UUID = None

@@ -4,7 +4,7 @@ from lilota.heartbeat import Heartbeat, HeartbeatTask
 from lilota.logging import configure_logging
 from lilota.models import Node
 from lilota.scheduler import LilotaScheduler
-from lilota.stores import SqlAlchemyNodeStore, SqlAlchemyTaskStore
+from lilota.stores import NodeStore, TaskStore
 import logging
 from multiprocessing import cpu_count, Queue
 import os
@@ -300,8 +300,8 @@ class Lilota():
         logging_level=logging_level
       )
 
-    self._node_store = SqlAlchemyNodeStore(self._db_url, None)
-    self._task_store = SqlAlchemyTaskStore(self._db_url, None)
+    self._node_store = NodeStore(self._db_url, None)
+    self._task_store = TaskStore(self._db_url, None)
     self._is_started = False
 
 

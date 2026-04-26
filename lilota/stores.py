@@ -57,7 +57,7 @@ class StoreBase(ABC):
 
 
 
-class SqlAlchemyNodeStore(StoreBase):
+class NodeStore(StoreBase):
   """Database store for managing Lilota nodes."""
 
   def __init__(self, db_url: str, logger: logging.Logger):
@@ -166,7 +166,7 @@ class SqlAlchemyNodeStore(StoreBase):
 
 
 
-class SqlAlchemyTaskStore(StoreBase):
+class TaskStore(StoreBase):
   """Database store for managing Lilota tasks."""
 
   BATCH_SIZE = 50
@@ -528,7 +528,7 @@ class SqlAlchemyTaskStore(StoreBase):
 
 
 
-class SqlAlchemyLogStore():
+class LogStore():
   """Database store for logging entries into Lilota."""
 
   def __init__(self, db_url: str):
@@ -568,7 +568,7 @@ class SqlAlchemyLogStore():
   
 
 
-class SqlAlchemyNodeLeaderStore(StoreBase):
+class NodeLeaderStore(StoreBase):
   """Store managing leader election for worker nodes."""
 
   def __init__(self, db_url: str, logger: logging.Logger, node_timeout_sec: int):

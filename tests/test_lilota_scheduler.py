@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from lilota.scheduler import LilotaScheduler
 from lilota.models import Node, NodeLeader, NodeType, NodeStatus, Task, TaskStatus, LogEntry
 from lilota.db.alembic import get_alembic_config
-from lilota.stores import SqlAlchemyLogStore
+from lilota.stores import LogStore
 import logging
 import time
 
@@ -165,7 +165,7 @@ class LilotaSchedulerTestCase(TestCase):
   def test_logging___when_starting_scheduler___should_log_correctly(self):
     # Arrange
     lilota = LilotaScheduler(LilotaSchedulerTestCase.DB_URL, logging_level=logging.DEBUG)
-    log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaSchedulerTestCase.DB_URL)
+    log_store: LogStore = LogStore(LilotaSchedulerTestCase.DB_URL)
 
     # Act
     lilota.start()
@@ -185,7 +185,7 @@ class LilotaSchedulerTestCase(TestCase):
   def test_logging___when_starting_scheduler_stopping_and_starting_it_again___should_log_correctly(self):
     # Arrange
     lilota = LilotaScheduler(LilotaSchedulerTestCase.DB_URL, logging_level=logging.DEBUG)
-    log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaSchedulerTestCase.DB_URL)
+    log_store: LogStore = LogStore(LilotaSchedulerTestCase.DB_URL)
     lilota.start()
     lilota.stop()
 
@@ -210,7 +210,7 @@ class LilotaSchedulerTestCase(TestCase):
     # Arrange
     lilota1 = LilotaScheduler(LilotaSchedulerTestCase.DB_URL, logging_level=logging.DEBUG)
     lilota2 = LilotaScheduler(LilotaSchedulerTestCase.DB_URL, logging_level=logging.DEBUG)
-    log_store: SqlAlchemyLogStore = SqlAlchemyLogStore(LilotaSchedulerTestCase.DB_URL)
+    log_store: LogStore = LogStore(LilotaSchedulerTestCase.DB_URL)
 
     # Act
     lilota1.start()
