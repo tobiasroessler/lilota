@@ -191,12 +191,12 @@ serializable model, such as **pydantic** models.
 stored in the database.
 * **lilota** uses a **ModelProtocol**. To comply with it, you only need
 to define an **as_dict** method. A full example using pydantic can be found here:
-[3-add-two-numbers-using-pydantic.py](https://github.com/tobiasroessler/lilota-sample/blob/main/src/3-add-two-numbers-using-pydantic.py)
+[3-add-two-numbers-using-pydantic](https://github.com/tobiasroessler/lilota-sample/blob/main/src/3-add-two-numbers-using-pydantic)
 * lilota also supports passing a **TaskProgress** instance to the task function.
 This can be used to update progress information in the database. It is important to set 
 **set_progress_manually=True** when creating the **lilota** instance. A full example 
 can be found here:
-[5-setting-task-progress-manually.py](https://github.com/tobiasroessler/lilota-sample/blob/main/src/5-setting-task-progress-manually.py)
+[5-setting-task-progress-manually](https://github.com/tobiasroessler/lilota-sample/blob/main/src/5-setting-task-progress-manually)
 
 
 #### Create a Lilota instance
@@ -245,8 +245,8 @@ print(add_output.sum)
 
 | Example | URL |
 | ------- | ----- |
-| A simple "Hello World" example | [1-hello-world.py](https://github.com/tobiasroessler/lilota-sample/blob/main/src/1-hello-world) |
-| Add two numbers using an input and an output model | [2-add-two-numbers.py](https://github.com/tobiasroessler/lilota-sample/blob/main/src/2-add-two-numbers) |
-| Add two numbers using a pydantic input and an output model | [3-add-two-numbers-using-pydantic.py](https://github.com/tobiasroessler/lilota-sample/blob/main/src/3-add-two-numbers-using-pydantic) |
-| Database access inside the task function | [4-using-db-inside-task.py](https://github.com/tobiasroessler/lilota-sample/blob/main/src/4-using-db-inside-task) |
-| Set the task progress manually in a task function | [5-setting-task-progress-manually.py](https://github.com/tobiasroessler/lilota-sample/blob/main/src/5-setting-task-progress-manually) |
+| A simple "Hello World" example | [1-hello-world](https://github.com/tobiasroessler/lilota-sample/blob/main/src/1-hello-world) |
+| Add two numbers using an input and an output model | [2-add-two-numbers](https://github.com/tobiasroessler/lilota-sample/blob/main/src/2-add-two-numbers) |
+| Add two numbers using a pydantic input and an output model | [3-add-two-numbers-using-pydantic](https://github.com/tobiasroessler/lilota-sample/blob/main/src/3-add-two-numbers-using-pydantic) |
+| Database access inside the task function | [4-using-db-inside-task](https://github.com/tobiasroessler/lilota-sample/blob/main/src/4-using-db-inside-task) |
+| Set the task progress manually in a task function | [5-setting-task-progress-manually](https://github.com/tobiasroessler/lilota-sample/blob/main/src/5-setting-task-progress-manually) |
