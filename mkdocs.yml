@@ -17,5 +17,6 @@ nav:
     - Retry mechanism: retry-mechanism.md
     - Shutdown: shutdown.md
     - Database: database.md
+    - Error handling: error-handling.md
   - Reference:
     - Lilota: lilota-reference.md
