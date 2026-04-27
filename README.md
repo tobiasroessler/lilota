@@ -209,6 +209,28 @@ lilota = Lilota(
 )
 ```
 
+Additionally it is possible to create a **Lilota scheduler** using a class method:
+
+``` python
+scheduler: LilotaScheduler = Lilota.scheduler(
+  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample"
+)
+```
+
+If you need a separate application that runs workers but does not require a scheduler, you can create it like this:
+
+``` python
+workers = Lilota.workers(
+  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample",
+  script_path=str(Path(__file__).resolve().parent / "workerscript.py"),
+  number_of_workers=1
+)
+```
+
+A full example using the class methods can be found here:
+[7-using-factory-methods](https://github.com/tobiasroessler/lilota-sample/blob/main/src/7-using-factory-methods)
+
+
 
 #### Start lilota
 
@@ -250,3 +272,5 @@ print(add_output.sum)
 | Add two numbers using a pydantic input and an output model | [3-add-two-numbers-using-pydantic](https://github.com/tobiasroessler/lilota-sample/blob/main/src/3-add-two-numbers-using-pydantic) |
 | Database access inside the task function | [4-using-db-inside-task](https://github.com/tobiasroessler/lilota-sample/blob/main/src/4-using-db-inside-task) |
 | Set the task progress manually in a task function | [5-setting-task-progress-manually](https://github.com/tobiasroessler/lilota-sample/blob/main/src/5-setting-task-progress-manually) |
+| Use a worker script that uses modules | [6-script-with-modules](https://github.com/tobiasroessler/lilota-sample/blob/main/src/6-script-with-modules) |
+| Use class methods to create a scheduler and workers | [7-using-factory-methods](https://github.com/tobiasroessler/lilota-sample/blob/main/src/7-using-factory-methods) |

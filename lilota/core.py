@@ -1,12 +1,11 @@
 import atexit
 from enum import Enum
 from lilota.heartbeat import Heartbeat, HeartbeatTask
-from lilota.logging import configure_logging
 from lilota.models import Node
 from lilota.scheduler import LilotaScheduler
 from lilota.stores import NodeStore, TaskStore
 import logging
-from multiprocessing import cpu_count, Queue
+from multiprocessing import cpu_count
 import os
 import sys
 import subprocess
@@ -186,23 +185,24 @@ class Lilota():
   """
 
   @classmethod
-  def scheduler(cls, db_url: str, **kwargs):
-    """Create a Lilota instance running only the scheduler.
+  def scheduler(cls, db_url: str, **kwargs) -> LilotaScheduler:
+    """Create a LilotaScheduler instance.
 
     Args:
       db_url (str): Database connection URL.
       **kwargs: Additional keyword arguments passed to the constructor.
 
     Returns:
-      Lilota: Configured instance in scheduler-only mode.
+      LilotaScheduler: Configured LilotaScheduler instance.
     """
-    return cls(
+    lilota = cls(
       mode=LilotaMode.SCHEDULER,
       db_url=db_url,
       script_path=None,
       number_of_workers=0,
       **kwargs
     )
+    return lilota.scheduler
   
 
   @classmethod
@@ -254,7 +254,7 @@ class Lilota():
         Each worker process executes this script as its entry point.
 
       number_of_workers (int, optional):
-        Number of worker processes to spawn. Defaults to the number of CPU cores.
+        Number of worker processes to spawn. Defaults to the number of CPU cores and cannot exceed this value.
 
       scheduler_heartbeat_interval (float, optional):
         Interval in seconds between scheduler node heartbeats.
