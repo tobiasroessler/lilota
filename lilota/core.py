@@ -202,7 +202,7 @@ class Lilota():
       number_of_workers=0,
       **kwargs
     )
-    return lilota.scheduler
+    return lilota._scheduler
   
 
   @classmethod
