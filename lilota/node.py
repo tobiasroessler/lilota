@@ -16,16 +16,17 @@ class NodeHeartbeatTask(HeartbeatTask):
   associated node in the database to indicate that the node is still alive.
   """
 
-  def __init__(self, interval: float, node_id: str, node_store: NodeStore, logger: logging.Logger):
+  def __init__(self, interval: float, jitter: float, node_id: str, node_store: NodeStore, logger: logging.Logger):
     """Initialize the heartbeat task.
 
     Args:
       interval (float): Interval in seconds between heartbeat executions.
+      jitter (float): Jitter that is used for the heartbeat interval.
       node_id (str): Unique identifier of the node.
       node_store (SqlAlchemyNodeStore): Store used for node operations.
       logger (logging.Logger): Logger instance used for reporting errors.
     """
-    super().__init__(interval)
+    super().__init__(interval, jitter)
     self._node_id = node_id
     self._node_store = node_store
     self._logger = logger

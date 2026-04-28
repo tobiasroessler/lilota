@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
-import threading
 import logging
+import random
+import threading
 
 
 class HeartbeatTask(ABC):
@@ -10,13 +11,15 @@ class HeartbeatTask(ABC):
   by a :class:`Heartbeat` thread.
   """
 
-  def __init__(self, interval: float):
+  def __init__(self, interval: float, jitter: float):
     """Initialize the heartbeat task.
 
     Args:
       interval (float): Interval in seconds between task executions.
+      jitter (float): Jitter that is used for the heartbeat interval.
     """
     self.interval = interval
+    self.jitter = jitter
 
 
   @abstractmethod
@@ -70,6 +73,9 @@ class Heartbeat(threading.Thread):
 
       # Wait
       interval = max(0.0, self._task.interval)
+      if self._task.jitter is not None:
+        jitter = random.uniform(-self._task.jitter * interval, self._task.jitter * interval)
+        interval = interval + jitter
       self._stop_event.wait(interval)
 
 

@@ -56,6 +56,7 @@ class AddOutputInvalid():
 
 worker = LilotaWorker(
   db_url="postgresql+psycopg://postgres:postgres@localhost:5433/lilota_test",
+  node_heartbeat_interval_jitter=None,
   max_task_heartbeat_interval=0.1,
   logging_level=logging.DEBUG
 )

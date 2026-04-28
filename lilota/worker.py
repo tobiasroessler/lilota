@@ -21,11 +21,12 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
   maintenance tasks such as cleaning up stale nodes.
   """
 
-  def __init__(self, interval: float, node_id: str, node_timeout_sec: int, node_store: NodeStore, node_leader_store: NodeLeaderStore, task_store: TaskStore, logger: logging.Logger):
+  def __init__(self, interval: float, jitter: float, node_id: str, node_timeout_sec: int, node_store: NodeStore, node_leader_store: NodeLeaderStore, task_store: TaskStore, logger: logging.Logger):
     """Initialize the worker heartbeat task.
 
     Args:
       interval (float): Interval in seconds between heartbeats.
+      jitter (float): Jitter that is used for the heartbeat interval.
       node_id (str): Unique identifier of the worker node.
       node_timeout_sec (int): Timeout in seconds after which nodes are
         considered dead.
@@ -34,7 +35,7 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
         election and leadership renewal.
       logger (logging.Logger): Logger instance.
     """
-    super().__init__(interval, node_id, node_store, logger)
+    super().__init__(interval, jitter, node_id, node_store, logger)
     self._node_timeout_sec = node_timeout_sec
     self._node_leader_store = node_leader_store
     self._task_store = task_store
@@ -114,6 +115,7 @@ class LilotaWorker(LilotaNode):
     self,
     db_url: str,
     node_heartbeat_interval: float = 5.0,
+    node_heartbeat_interval_jitter: float = 0.2,
     node_timeout_sec: int = 20,
     task_heartbeat_interval: float = 0.1,
     max_task_heartbeat_interval: float = 5.0,
@@ -126,6 +128,9 @@ class LilotaWorker(LilotaNode):
       db_url (str): Database connection URL.
       node_heartbeat_interval (float, optional): Interval in seconds between
         node heartbeats. Defaults to 5.0.
+      node_heartbeat_interval_jitter (float, optional): Jitter applied to the heartbeat interval
+        to introduce small random variations in execution timing and avoid
+        synchronized worker behavior.
       node_timeout_sec (int, optional): Time in seconds before a node is
         considered inactive. Defaults to 20.
       task_heartbeat_interval (float, optional): Initial interval in seconds
@@ -148,6 +153,11 @@ class LilotaWorker(LilotaNode):
       **kwargs,
     )
 
+    if node_heartbeat_interval_jitter is not None:
+      if node_heartbeat_interval_jitter <= 0 or node_heartbeat_interval_jitter >= 1:
+        raise ValueError("node_heartbeat_interval_jitter must be greater than 0 and smaller than 1")
+
+    self._node_heartbeat_interval_jitter = node_heartbeat_interval_jitter
     self._task_heartbeat_interval: float = task_heartbeat_interval
     self._max_task_heartbeat_interval: float = max_task_heartbeat_interval
     self._set_progress_manually: bool = set_progress_manually
@@ -239,6 +249,7 @@ class LilotaWorker(LilotaNode):
     # Start worker heartbeat thread
     heartbeat_task = WorkerHeartbeatTask(
       self._node_heartbeat_interval, 
+      self._node_heartbeat_interval_jitter,
       self._node_id, 
       self._node_timeout_sec, 
       self._node_store,

@@ -45,7 +45,8 @@ class LilotaScheduler(LilotaNode):
   def _on_started(self):
     # Start heartbeat thread
     heartbeat_task = NodeHeartbeatTask(
-      self._node_heartbeat_interval, 
+      self._node_heartbeat_interval,
+      None,
       self._node_id, 
       self._node_store, 
       self._logger

@@ -148,7 +148,7 @@ class ProcessManager:
 class ProcessManagerTask(HeartbeatTask):
 
   def __init__(self, interval: float, process_manager: ProcessManager):
-    super().__init__(interval)
+    super().__init__(interval, None)
     self._process_manager = process_manager
 
 
@@ -254,7 +254,7 @@ class Lilota():
         Each worker process executes this script as its entry point.
 
       number_of_workers (int, optional):
-        Number of worker processes to spawn. Defaults to the number of CPU cores and cannot exceed this value.
+        Number of worker processes to spawn. Defaults to the number of CPU cores and cannot exceed this value * 5.
 
       scheduler_heartbeat_interval (float, optional):
         Interval in seconds between scheduler node heartbeats.
@@ -277,8 +277,9 @@ class Lilota():
         raise ValueError("number_of_workers must be > 0 in WORKER or ALL mode")
       
       number_of_cpus = cpu_count()
-      if number_of_workers > number_of_cpus:
-        raise ValueError(f"number_of_workers cannot be greater than {number_of_cpus}")
+      max_workers = number_of_cpus * 5
+      if number_of_workers > max_workers:
+       raise ValueError(f"number_of_workers cannot be greater than {max_workers}")
 
     self._db_url = db_url
     self._mode = mode

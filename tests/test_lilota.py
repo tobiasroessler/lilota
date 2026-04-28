@@ -137,7 +137,8 @@ class LilotaTestCase(TestCase):
   def test_init___worker_mode_with_too_many_workers___should_raise(self):
     # Arrange
     from multiprocessing import cpu_count
-    too_many = cpu_count() + 1
+    max_workers = cpu_count() * 5
+    too_many = max_workers + 1
 
     # Act & Assert
     with self.assertRaises(ValueError) as ctx:
@@ -150,14 +151,15 @@ class LilotaTestCase(TestCase):
 
     self.assertEqual(
       str(ctx.exception),
-      f"number_of_workers cannot be greater than {cpu_count()}"
+      f"number_of_workers cannot be greater than {max_workers}"
     )
 
 
   def test_init___all_mode_with_too_many_workers___should_raise(self):
     # Arrange
     from multiprocessing import cpu_count
-    too_many = cpu_count() + 1
+    max_workers = cpu_count() * 5
+    too_many = max_workers + 1
 
     # Act & Assert
     with self.assertRaises(ValueError) as ctx:
@@ -170,7 +172,7 @@ class LilotaTestCase(TestCase):
 
     self.assertEqual(
       str(ctx.exception),
-      f"number_of_workers cannot be greater than {cpu_count()}"
+      f"number_of_workers cannot be greater than {max_workers}"
     )
 
 
@@ -462,6 +464,7 @@ class LilotaTestCase(TestCase):
     lilota = Lilota(
       db_url=LilotaTestCase.DB_URL,
       script_path=str(Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"),
+      number_of_workers=20
     )
     lilota.start()
 

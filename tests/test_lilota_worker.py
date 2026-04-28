@@ -73,6 +73,20 @@ class LilotaWorkerTestCase(TestCase):
       session.commit()
 
 
+  def test_init___invalid_interval_jitter_values___should_raise_error(self):
+    invalid_values = [-1, 0, 1, 1.1]
+
+    for value in invalid_values:
+      with self.subTest(jitter=value):
+        with self.assertRaises(ValueError) as ctx:
+          LilotaWorker(LilotaWorkerTestCase.DB_URL, node_heartbeat_interval_jitter=value)
+
+        self.assertEqual(
+          str(ctx.exception),
+          "node_heartbeat_interval_jitter must be greater than 0 and smaller than 1"
+        )
+
+
   def test_register___nothing_is_registered___should_not_have_any_registration(self):
     # Arrange & Act
     worker = LilotaWorker(LilotaWorkerTestCase.DB_URL)
@@ -290,6 +304,7 @@ class LilotaWorkerTestCase(TestCase):
       worker = LilotaWorker(
         LilotaWorkerTestCase.DB_URL,
         node_heartbeat_interval=1.0, 
+        node_heartbeat_interval_jitter=None,
         node_timeout_sec=20,
         logging_level=logging.DEBUG
       )
@@ -328,6 +343,7 @@ class LilotaWorkerTestCase(TestCase):
       worker1 = LilotaWorker(
         LilotaWorkerTestCase.DB_URL,
         node_heartbeat_interval=1.0, 
+        node_heartbeat_interval_jitter=None,
         node_timeout_sec=2,
         logging_level=logging.DEBUG
       )
@@ -391,12 +407,22 @@ class LilotaWorkerTestCase(TestCase):
       self.assertIsNone(node_leader)
       session.commit()
 
-    worker1 = LilotaWorker(LilotaWorkerTestCase.DB_URL, node_heartbeat_interval=1.0, node_timeout_sec=2)
+    worker1 = LilotaWorker(
+      LilotaWorkerTestCase.DB_URL, 
+      node_heartbeat_interval=1.0, 
+      node_heartbeat_interval_jitter=None, 
+      node_timeout_sec=2
+    )
     t1 = threading.Thread(target=worker1.start, daemon=True)
     t1.start()
     time.sleep(2)
 
-    worker2 = LilotaWorker(LilotaWorkerTestCase.DB_URL, node_heartbeat_interval=1.0, node_timeout_sec=2)
+    worker2 = LilotaWorker(
+      LilotaWorkerTestCase.DB_URL, 
+      node_heartbeat_interval=1.0, 
+      node_heartbeat_interval_jitter=None, 
+      node_timeout_sec=2
+    )
     t2 = threading.Thread(target=worker2.start, daemon=True)
     t2.start()
     time.sleep(2)
