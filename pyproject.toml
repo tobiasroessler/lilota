@@ -4,14 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lilota"
-version = "0.24.0"
+version = "0.25.0"
 authors = [
   { name="Tobias Rössler", email="tobiasroessler@gmail.com" },
 ]
 dependencies = [
-  "SQLAlchemy>=2.0.45,<3.0",
+  "sqlalchemy>=2.0.45,<3.0",
   "psycopg[binary]>=3.3.2,<4.0",
   "alembic>=1.17.2,<2.0",
+  "psycopg-binary>=3.3.3",
 ]
 description = "A lightweight solution for long-running tasks"
 readme = "README.md"
@@ -34,6 +35,14 @@ exclude = ["tests*"]
 
 [tool.setuptools.package-data]
 "lilota" = ["db/migrations/**", "db/migrations/**/**"]
+
+[dependency-groups]
+dev = [
+    "build>=1.4.4",
+    "mkdocs-material>=9.7.6",
+    "mkdocstrings-python>=2.0.3",
+    "twine>=6.2.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/tobiasroessler/lilota"
