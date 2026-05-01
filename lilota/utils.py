@@ -5,7 +5,7 @@ from .models import ModelProtocol
 
 
 def exception_to_dict(ex: Exception) -> dict:
-  """Convert an exception into a dictionary containing type, message, and traceback.
+    """Convert an exception into a dictionary containing type, message, and traceback.
 
     Args:
         ex (Exception): The exception to convert.
@@ -16,15 +16,15 @@ def exception_to_dict(ex: Exception) -> dict:
             - "message": Exception message string.
             - "traceback": Formatted traceback string.
     """
-  return {
-    "type": ex.__class__.__name__,
-    "message": str(ex),
-    "traceback": traceback.format_exc(),
-  }
+    return {
+        "type": ex.__class__.__name__,
+        "message": str(ex),
+        "traceback": traceback.format_exc(),
+    }
 
 
 def error_to_dict(error_message: str) -> dict:
-  """Wrap an error message string into a dictionary.
+    """Wrap an error message string into a dictionary.
 
     Args:
         error_message (str): The error message to wrap.
@@ -32,13 +32,11 @@ def error_to_dict(error_message: str) -> dict:
     Returns:
         dict: A dictionary with key "message" containing the error message.
     """
-  return {
-    "message": error_message
-  }
+    return {"message": error_message}
 
 
 def normalize_data(data: Any) -> dict:
-  """Normalize input data to a dictionary for storage or serialization.
+    """Normalize input data to a dictionary for storage or serialization.
 
     Supports `dict`, `ModelProtocol` objects, and dataclasses.
 
@@ -51,18 +49,18 @@ def normalize_data(data: Any) -> dict:
     Raises:
         TypeError: If `data` is not a `dict`, `ModelProtocol`, or dataclass.
     """
-  # Dict
-  if isinstance(data, dict):
-    return data
-  
-  # ModelProtocol
-  if isinstance(data, ModelProtocol):
-    return data.as_dict()
+    # Dict
+    if isinstance(data, dict):
+        return data
 
-  # Dataclass
-  if is_dataclass(data):
-    return asdict(data)
+    # ModelProtocol
+    if isinstance(data, ModelProtocol):
+        return data.as_dict()
 
-  raise TypeError(
-    f"Unsupported type: {type(data).__name__}. Expected ModelProtocol, dataclass, or dict."
-  )
+    # Dataclass
+    if is_dataclass(data):
+        return asdict(data)
+
+    raise TypeError(
+        f"Unsupported type: {type(data).__name__}. Expected ModelProtocol, dataclass, or dict."
+    )

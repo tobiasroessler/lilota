@@ -11,666 +11,630 @@ from uuid import UUID
 import logging
 
 
-
 _ENGINE_CACHE = {}
 
-def get_engine(db_url):
-  if db_url not in _ENGINE_CACHE:
-    _ENGINE_CACHE[db_url] = create_engine(
-      db_url,
-      pool_size=10,
-      max_overflow=20,
-      pool_timeout=30,
-      pool_pre_ping=True,
-    )
-  return _ENGINE_CACHE[db_url]
 
+def get_engine(db_url):
+    if db_url not in _ENGINE_CACHE:
+        _ENGINE_CACHE[db_url] = create_engine(
+            db_url,
+            pool_size=10,
+            max_overflow=20,
+            pool_timeout=30,
+            pool_pre_ping=True,
+        )
+    return _ENGINE_CACHE[db_url]
 
 
 class StoreBase(ABC):
-  """Abstract base class for all database stores.
+    """Abstract base class for all database stores.
 
-  Provides common initialization and session management.
-  """
-
-  def __init__(self, db_url: str, logger: logging.Logger):
+    Provides common initialization and session management.
     """
-    Args:
-        db_url (str): Database connection URL.
-        logger (logging.Logger): Logger for store operations.
-    """
-    self._db_url = db_url
-    self._logger = logger
-    self._engine = None
-    self._Session = None
 
+    def __init__(self, db_url: str, logger: logging.Logger):
+        """
+        Args:
+            db_url (str): Database connection URL.
+            logger (logging.Logger): Logger for store operations.
+        """
+        self._db_url = db_url
+        self._logger = logger
+        self._engine = None
+        self._Session = None
 
-  def _ensure_engine(self):
-    if self._engine is None:
-      self._engine = get_engine(self._db_url)
-      self._Session = sessionmaker(bind=self._engine, expire_on_commit=False)
+    def _ensure_engine(self):
+        if self._engine is None:
+            self._engine = get_engine(self._db_url)
+            self._Session = sessionmaker(bind=self._engine, expire_on_commit=False)
 
-
-  def _get_session(self):
-    self._ensure_engine()
-    return self._Session()
-
+    def _get_session(self):
+        self._ensure_engine()
+        return self._Session()
 
 
 class NodeStore(StoreBase):
-  """Database store for managing Lilota nodes."""
+    """Database store for managing Lilota nodes."""
 
-  def __init__(self, db_url: str, logger: logging.Logger):
-    """
-    Args:
-        db_url (str): Database connection URL.
-        logger (logging.Logger): Logger for store operations.
-    """
-    super().__init__(db_url, logger)
+    def __init__(self, db_url: str, logger: logging.Logger):
+        """
+        Args:
+            db_url (str): Database connection URL.
+            logger (logging.Logger): Logger for store operations.
+        """
+        super().__init__(db_url, logger)
 
+    def create_node(self, type: NodeType, status: NodeStatus = NodeStatus.IDLE) -> UUID:
+        """Create a new node record in the database.
 
-  def create_node(self, type: NodeType, status: NodeStatus = NodeStatus.IDLE) -> UUID:
-    """Create a new node record in the database.
+        Args:
+            type (NodeType): Type of the node (scheduler or worker).
+            status (NodeStatus): Initial lifecycle status.
 
-    Args:
-        type (NodeType): Type of the node (scheduler or worker).
-        status (NodeStatus): Initial lifecycle status.
+        Returns:
+            UUID: The unique identifier of the created node.
+        """
+        node = Node(type=type, status=status)
 
-    Returns:
-        UUID: The unique identifier of the created node.
-    """
-    node = Node(
-      type=type,
-      status=status
-    )
-    
-    with self._get_session() as session:
-      with session.begin():
-        session.add(node)
+        with self._get_session() as session:
+            with session.begin():
+                session.add(node)
 
-    return node.id
-  
+        return node.id
 
-  def get_all_nodes(self):
-    """Return all nodes in the database."""
-    with self._get_session() as session:
-      return session.query(Node).all()
-      
+    def get_all_nodes(self):
+        """Return all nodes in the database."""
+        with self._get_session() as session:
+            return session.query(Node).all()
 
-  def get_node_by_id(self, id: UUID):
-    """Return a node by its UUID.
+    def get_node_by_id(self, id: UUID):
+        """Return a node by its UUID.
 
-    Args:
-        id (UUID): Node identifier.
+        Args:
+            id (UUID): Node identifier.
 
-    Returns:
-        Node | None: Node object if found, else None.
-    """
-    with self._get_session() as session:
-      node = session.get(Node, id)
-      if node is None:
-        return None
-      return node
-  
+        Returns:
+            Node | None: Node object if found, else None.
+        """
+        with self._get_session() as session:
+            node = session.get(Node, id)
+            if node is None:
+                return None
+            return node
 
-  def update_node_status(self, id: UUID, status: NodeStatus):
-    """Update the status of a node.
+    def update_node_status(self, id: UUID, status: NodeStatus):
+        """Update the status of a node.
 
-    Args:
-        id (UUID): Node identifier.
-        status (NodeStatus): New status.
-    """
-    with self._get_session() as session:
-      with session.begin():
-        stmt = (
-          update(Node).where(Node.id == id).values(status = status)
-        )
-        session.execute(stmt)
+        Args:
+            id (UUID): Node identifier.
+            status (NodeStatus): New status.
+        """
+        with self._get_session() as session:
+            with session.begin():
+                stmt = update(Node).where(Node.id == id).values(status=status)
+                session.execute(stmt)
 
+    def update_status_on_dead_nodes(self, cutoff: datetime, exclude_node_id: UUID):
+        """Mark nodes as DEAD if their last_seen_at is older than cutoff.
 
-  def update_status_on_dead_nodes(self, cutoff: datetime, exclude_node_id: UUID):
-    """Mark nodes as DEAD if their last_seen_at is older than cutoff.
+        Args:
+            cutoff (datetime): Time threshold to consider a node dead.
+            exclude_node_id (UUID): Node to exclude from the update.
 
-    Args:
-        cutoff (datetime): Time threshold to consider a node dead.
-        exclude_node_id (UUID): Node to exclude from the update.
+        Returns:
+            int: Number of nodes marked as DEAD.
+        """
+        with self._get_session() as session:
+            with session.begin():
+                result = session.execute(
+                    update(Node)
+                    .where(Node.last_seen_at < cutoff)
+                    .where(Node.id != exclude_node_id)
+                    .where(Node.status != NodeStatus.DEAD)
+                    .values(status=NodeStatus.DEAD)
+                )
+                return result.rowcount
 
-    Returns:
-        int: Number of nodes marked as DEAD.
-    """
-    with self._get_session() as session:
-      with session.begin():
-        result = session.execute(
-          update(Node)
-          .where(Node.last_seen_at < cutoff)
-          .where(Node.id != exclude_node_id)
-          .where(Node.status != NodeStatus.DEAD)
-          .values(status=NodeStatus.DEAD)
-        )
-        return result.rowcount
+    def update_node_last_seen_at(self, id: UUID):
+        """Update the heartbeat timestamp of a node.
 
-
-  def update_node_last_seen_at(self, id: UUID):
-    """Update the heartbeat timestamp of a node.
-
-    Args:
-        id (UUID): Node identifier.
-    """
-    with self._get_session() as session:
-      with session.begin():
-        session.execute(
-          update(Node)
-          .where(Node.id == id)
-          .values(last_seen_at = datetime.now(timezone.utc))
-        )
-
+        Args:
+            id (UUID): Node identifier.
+        """
+        with self._get_session() as session:
+            with session.begin():
+                session.execute(
+                    update(Node)
+                    .where(Node.id == id)
+                    .values(last_seen_at=datetime.now(timezone.utc))
+                )
 
 
 class TaskStore(StoreBase):
-  """Database store for managing Lilota tasks."""
+    """Database store for managing Lilota tasks."""
 
-  BATCH_SIZE = 50
+    BATCH_SIZE = 50
 
-  def __init__(self, db_url: str, logger: logging.Logger, set_progress_manually: bool = False):
-    """
-    Args:
-        db_url (str): Database connection URL.
-        logger (logging.Logger): Logger for store operations.
-        set_progress_manually (bool): Whether task progress must be updated manually.
-    """
-    super().__init__(db_url, logger)
-    self._set_progress_manually = set_progress_manually
+    def __init__(
+        self, db_url: str, logger: logging.Logger, set_progress_manually: bool = False
+    ):
+        """
+        Args:
+            db_url (str): Database connection URL.
+            logger (logging.Logger): Logger for store operations.
+            set_progress_manually (bool): Whether task progress must be updated manually.
+        """
+        super().__init__(db_url, logger)
+        self._set_progress_manually = set_progress_manually
 
+    def create_task(self, name: str, input: Any = None):
+        """Create a new task record in the database.
 
-  def create_task(self, name: str, input: Any = None):
-    """Create a new task record in the database.
+        Args:
+            name (str): Registered task name.
+            input (Any, optional): Input data for the task.
 
-    Args:
-        name (str): Registered task name.
-        input (Any, optional): Input data for the task.
+        Returns:
+            UUID: The unique identifier of the created task.
+        """
+        if input is not None:
+            input = normalize_data(input)
 
-    Returns:
-        UUID: The unique identifier of the created task.
-    """
-    if input is not None:
-      input = normalize_data(input)
+        task = Task(name=name, input=input, status=TaskStatus.CREATED)
 
-    task = Task(
-      name=name,
-      input=input,
-      status = TaskStatus.CREATED
-    )
-    
-    with self._get_session() as session:
-      with session.begin():
-        session.add(task)
+        with self._get_session() as session:
+            with session.begin():
+                session.add(task)
 
-    return task.id
-  
+        return task.id
 
-  def get_all_tasks(self):
-    """Return all tasks ordered by ID."""
-    with self._get_session() as session:
-      return session.query(Task).order_by(Task.id).all()
-      
+    def get_all_tasks(self):
+        """Return all tasks ordered by ID."""
+        with self._get_session() as session:
+            return session.query(Task).order_by(Task.id).all()
 
-  def get_unfinished_tasks(self) -> list[Task]:
-    """Return all tasks that are not yet completed or failed."""
-    with self._get_session() as session:
-      return (
-        session.query(Task)
-          .filter(Task.status.in_([TaskStatus.CREATED, TaskStatus.SCHEDULED, TaskStatus.RUNNING]))
-          .order_by(Task.id)
-          .all()
-      )
-    
+    def get_unfinished_tasks(self) -> list[Task]:
+        """Return all tasks that are not yet completed or failed."""
+        with self._get_session() as session:
+            return (
+                session.query(Task)
+                .filter(
+                    Task.status.in_(
+                        [TaskStatus.CREATED, TaskStatus.SCHEDULED, TaskStatus.RUNNING]
+                    )
+                )
+                .order_by(Task.id)
+                .all()
+            )
 
-  def expire_overdue_tasks(self) -> None:
-    """Set status to "expired" for running tasks whose expiration time has passed."""
-    with self._get_session() as session:
-      with session.begin():
-        session.execute(
-          update(Task)
-          .where(
-            Task.status == TaskStatus.RUNNING,
-            Task.expires_at.is_not(None),
-            Task.expires_at < datetime.now(timezone.utc)
-          )
-          .values(status=TaskStatus.EXPIRED)
-        )
+    def expire_overdue_tasks(self) -> None:
+        """Set status to "expired" for running tasks whose expiration time has passed."""
+        with self._get_session() as session:
+            with session.begin():
+                session.execute(
+                    update(Task)
+                    .where(
+                        Task.status == TaskStatus.RUNNING,
+                        Task.expires_at.is_not(None),
+                        Task.expires_at < datetime.now(timezone.utc),
+                    )
+                    .values(status=TaskStatus.EXPIRED)
+                )
 
+    def has_unfinished_tasks(self) -> bool:
+        """Check if there are any unfinished tasks in the database."""
+        with self._get_session() as session:
+            return session.query(
+                session.query(Task)
+                .filter(
+                    Task.status.in_(
+                        [TaskStatus.CREATED, TaskStatus.SCHEDULED, TaskStatus.RUNNING]
+                    )
+                )
+                .exists()
+            ).scalar()
 
-  def has_unfinished_tasks(self) -> bool:
-    """Check if there are any unfinished tasks in the database."""
-    with self._get_session() as session:
-      return session.query(
-        session.query(Task)
-        .filter(
-          Task.status.in_([
-            TaskStatus.CREATED,
-            TaskStatus.SCHEDULED,
-            TaskStatus.RUNNING
-          ])
-        )
-        .exists()
-      ).scalar()
+    def get_task_by_id(self, id: UUID) -> Task:
+        """Return a task by its UUID."""
+        with self._get_session() as session:
+            task = session.get(Task, id)
+            if task is None:
+                return None
+            return task
 
+    def get_next_task(self, worker_id: UUID) -> Task:
+        """Return the next available task for a worker and lock it.
 
-  def get_task_by_id(self, id: UUID) -> Task:
-    """Return a task by its UUID."""
-    with self._get_session() as session:
-      task = session.get(Task, id)
-      if task is None:
-        return None
-      return task
-    
+        Args:
+            worker_id (UUID): Worker node locking the task.
 
-  def get_next_task(self, worker_id: UUID) -> Task:
-    """Return the next available task for a worker and lock it.
+        Returns:
+            Task | None: The next scheduled task, or None if no task is available.
+        """
+        with self._get_session() as session:
+            with session.begin():
+                task_id = session.execute(
+                    select(Task.id)
+                    .where(Task.status == TaskStatus.CREATED)
+                    .where(Task.run_at <= datetime.now(timezone.utc))
+                    .order_by(Task.run_at)
+                    .limit(1)
+                ).scalar()
 
-    Args:
-        worker_id (UUID): Worker node locking the task.
+                if not task_id:
+                    return None
 
-    Returns:
-        Task | None: The next scheduled task, or None if no task is available.
-    """
-    with self._get_session() as session:
-      with session.begin():
-        task_id = session.execute(
-          select(Task.id)
-          .where(Task.status == TaskStatus.CREATED)
-          .where(Task.run_at <= datetime.now(timezone.utc))
-          .order_by(Task.run_at)
-          .limit(1)
-        ).scalar()
+                result = session.execute(
+                    update(Task)
+                    .where(Task.id == task_id)
+                    .where(Task.status == TaskStatus.CREATED)
+                    .values(
+                        status=TaskStatus.SCHEDULED,
+                        locked_at=datetime.now(timezone.utc),
+                        locked_by=worker_id,
+                    )
+                )
 
-        if not task_id:
-          return None
-        
-        result = session.execute(
-          update(Task)
-          .where(Task.id == task_id)
-          .where(Task.status == TaskStatus.CREATED)
-          .values(
-            status=TaskStatus.SCHEDULED,
-            locked_at=datetime.now(timezone.utc),
-            locked_by=worker_id,
-          )
-        )
+            if result.rowcount != 1:
+                return None
 
-      if result.rowcount != 1:
-        return None
-      
-      return session.get(Task, task_id)
+            return session.get(Task, task_id)
 
+    def start_task(
+        self, id: UUID, max_attempts: int, timeout: timedelta | None = None
+    ) -> Task:
+        """Mark a task as RUNNING and initialize metadata.
 
-  def start_task(self, id: UUID, max_attempts: int, timeout: timedelta | None = None) -> Task:
-    """Mark a task as RUNNING and initialize metadata.
+        Args:
+            id (UUID): Id of the task.
+            max_attempts (int): Upper limit on how many times the task may be executed.
+            timeout (timedelta | None): Optional timeout that can be set for a task.
 
-    Args:
-        id (UUID): Id of the task.
-        max_attempts (int): Upper limit on how many times the task may be executed.
-        timeout (timedelta | None): Optional timeout that can be set for a task.
+        Returns:
+            Task | None: The started task, or None if no task is available.
+        """
+        expires_at = None
+        start_date_time = datetime.now(timezone.utc)
+        timeout_sec = int(timeout.total_seconds()) if timeout is not None else None
 
-    Returns:
-        Task | None: The started task, or None if no task is available.
-    """
-    expires_at = None
-    start_date_time = datetime.now(timezone.utc)
-    timeout_sec = int(timeout.total_seconds()) if timeout is not None else None
+        with self._get_session() as session:
+            with session.begin():
+                task = self._load_task(session, id)
+                task.timeout = timeout_sec
 
-    with self._get_session() as session:
-      with session.begin():
-        task = self._load_task(session, id)
-        task.timeout = timeout_sec
+                if timeout is not None:
+                    expires_at = start_date_time + timeout
 
-        if timeout is not None:
-          expires_at = start_date_time + timeout
+                task.pid = os.getpid()
+                task.status = TaskStatus.RUNNING
+                task.max_attempts = max_attempts
+                task.progress_percentage = 0
+                task.start_date_time = start_date_time
+                task.expires_at = expires_at
+                task.end_date_time = None
+                return task
 
-        task.pid = os.getpid()
-        task.status = TaskStatus.RUNNING
-        task.max_attempts = max_attempts
-        task.progress_percentage = 0
-        task.start_date_time = start_date_time
-        task.expires_at = expires_at
-        task.end_date_time = None
+    def retry_tasks(self, batch_size=BATCH_SIZE):
+        """Retry eligible tasks by creating new scheduled task instances.
+
+        This method scans for tasks that are eligible for retry based on their
+        status, expiration, and retry limits. It uses optimistic locking to safely
+        "claim" tasks in concurrent environments, ensuring that no task is retried
+        more than once across multiple workers.
+
+        Eligible tasks include:
+            - Tasks with status "failed" or "expired"
+            - Tasks with status "running" that have exceeded their expiration time
+
+        A task is only retried if:
+            - It has not already been retried (`retried_at` is None)
+            - It has remaining retry attempts (`attempts < max_attempts`)
+
+        For each claimed task:
+            - A new task is created with incremented attempt count
+            - The retry is scheduled with a delay proportional to the number of attempts
+            - The original task is marked with `retried_at` to prevent duplicate retries
+
+        Concurrency is handled using optimistic locking via the `version` field.
+        If another worker updates the task first, the current worker skips it.
+
+        Args:
+            batch_size (int, optional):
+                Maximum number of tasks to process in a single run.
+                Defaults to BATCH_SIZE.
+
+        Returns:
+            int:
+                The number of retry tasks successfully created.
+
+        Raises:
+            sqlalchemy.exc.SQLAlchemyError:
+                If a database error occurs during the transaction.
+
+        Notes:
+            - Uses a linear backoff strategy: delay = 5 * current_attempts (seconds)
+            - All operations are executed within a single transactional session
+            - Safe for concurrent execution across multiple workers
+        """
+        now = datetime.now(timezone.utc)
+
+        with self._get_session() as session:
+            with session.begin():
+                # 1. Select tasks
+                stmt = (
+                    select(Task)
+                    .where(
+                        and_(
+                            Task.retried_at.is_(None),
+                            Task.attempts < Task.max_attempts,
+                            or_(
+                                Task.status.in_(["failed", "expired"]),
+                                and_(
+                                    Task.status == "running",
+                                    Task.expires_at.is_not(None),
+                                    Task.expires_at < now,
+                                ),
+                            ),
+                        )
+                    )
+                    .order_by(Task.run_at)
+                    .limit(batch_size)
+                )
+
+                tasks = session.execute(stmt).scalars().all()
+
+                if not tasks:
+                    return 0
+
+                new_tasks = []
+
+                for task in tasks:
+                    if task.retried_at is not None:
+                        continue
+
+                    current_version = task.version
+                    current_attempts = task.attempts
+
+                    # 2. Try to "claim" via optimistic locking
+                    result = session.execute(
+                        update(Task)
+                        .where(
+                            Task.id == task.id,
+                            Task.version == current_version,
+                            Task.retried_at.is_(None),
+                        )
+                        .values(retried_at=now, version=current_version + 1)
+                    )
+
+                    # 3. If no row updated: someone else took it
+                    if result.rowcount == 0:
+                        continue
+
+                    # 4. Create retry task
+                    retry_task = Task(
+                        name=task.name,
+                        status=TaskStatus.CREATED,
+                        run_at=now + timedelta(seconds=5 * current_attempts),
+                        attempts=current_attempts + 1,
+                        max_attempts=task.max_attempts,
+                        previous_task_id=task.id,
+                        timeout=task.timeout,
+                        input=task.input,
+                    )
+
+                    new_tasks.append(retry_task)
+
+                session.add_all(new_tasks)
+                return len(new_tasks)
+
+    def set_progress(self, id: UUID, progress: int):
+        """Update the progress percentage of a task.
+
+        Args:
+            id (UUID): Id of the task.
+            progress (int): The progress of the task (0-100)
+        """
+        with self._get_session() as session:
+            with session.begin():
+                task = self._load_task(session, id)
+                task.progress_percentage = max(0, min(progress, 100))
+
+    def end_task_success(self, id: UUID, output: Any):
+        """Mark a task as successfully completed.
+
+        Args:
+            id (UUID): Id of the task.
+            output (Any): Task result data.
+        """
+        if output is not None:
+            output = normalize_data(output)
+
+        with self._get_session() as session:
+            with session.begin():
+                task = self._load_task(session, id)
+                task.output = output
+                self._complete_progress(task, TaskStatus.COMPLETED)
+
+    def end_task_failure(self, id: UUID, error: dict):
+        """Mark a task as failed.
+
+        Args:
+            id (UUID): Id of the task.
+            error (dict): Error information to store.
+        """
+        with self._get_session() as session:
+            with session.begin():
+                task = self._load_task(session, id)
+                task.error = error
+                self._complete_progress(task, TaskStatus.FAILED)
+
+    def delete_task_by_id(self, id: UUID):
+        """Delete a task by its UUID.
+
+        Returns:
+            bool: True if deleted, False if task not found.
+        """
+        with self._get_session() as session:
+            with session.begin():
+                task = session.get(Task, id)
+                if task is None:
+                    return False
+                session.delete(task)
+        return True
+
+    def _complete_progress(self, task: Task, task_status: TaskStatus):
+        if not self._set_progress_manually:
+            task.progress_percentage = 100
+        task.status = task_status
+        task.end_date_time = datetime.now(timezone.utc)
+
+    def _load_task(self, session, id: UUID) -> Task:
+        task: Task = session.get(Task, id)
+        if task is None:
+            raise ValueError(f"Task {id} not found")
         return task
 
 
-  def retry_tasks(self, batch_size = BATCH_SIZE):
-    """Retry eligible tasks by creating new scheduled task instances.
+class LogStore:
+    """Database store for logging entries into Lilota."""
 
-    This method scans for tasks that are eligible for retry based on their
-    status, expiration, and retry limits. It uses optimistic locking to safely
-    "claim" tasks in concurrent environments, ensuring that no task is retried
-    more than once across multiple workers.
+    def __init__(self, db_url: str):
+        """
+        Args:
+            db_url (str): Database connection URL.
+        """
+        self._db_url = db_url
+        self._engine = None
+        self._Session = None
 
-    Eligible tasks include:
-        - Tasks with status "failed" or "expired"
-        - Tasks with status "running" that have exceeded their expiration time
-
-    A task is only retried if:
-        - It has not already been retried (`retried_at` is None)
-        - It has remaining retry attempts (`attempts < max_attempts`)
-
-    For each claimed task:
-        - A new task is created with incremented attempt count
-        - The retry is scheduled with a delay proportional to the number of attempts
-        - The original task is marked with `retried_at` to prevent duplicate retries
-
-    Concurrency is handled using optimistic locking via the `version` field.
-    If another worker updates the task first, the current worker skips it.
-
-    Args:
-        batch_size (int, optional):
-            Maximum number of tasks to process in a single run.
-            Defaults to BATCH_SIZE.
-
-    Returns:
-        int:
-            The number of retry tasks successfully created.
-
-    Raises:
-        sqlalchemy.exc.SQLAlchemyError:
-            If a database error occurs during the transaction.
-
-    Notes:
-        - Uses a linear backoff strategy: delay = 5 * current_attempts (seconds)
-        - All operations are executed within a single transactional session
-        - Safe for concurrent execution across multiple workers
-    """
-    now = datetime.now(timezone.utc)
-
-    with self._get_session() as session:
-      with session.begin():
-        # 1. Select tasks
-        stmt = (
-          select(Task)
-            .where(
-              and_(
-                Task.retried_at.is_(None),
-                Task.attempts < Task.max_attempts,
-                or_(
-                  Task.status.in_(["failed", "expired"]),
-                  and_(
-                    Task.status == "running",
-                    Task.expires_at.is_not(None),
-                    Task.expires_at < now
-                  )
-                )
-              )
+    def _ensure_engine(self):
+        if self._engine is None:
+            self._engine = create_engine(self._db_url, pool_pre_ping=True)
+            self._Session = sessionmaker(
+                bind=self._engine,
+                expire_on_commit=False,
             )
-            .order_by(Task.run_at)
-            .limit(batch_size)
-        )
 
-        tasks = session.execute(stmt).scalars().all()
+    def get_session(self):
+        """Return a new SQLAlchemy session."""
+        self._ensure_engine()
+        return self._Session()
 
-        if not tasks:
-          return 0
-        
-        new_tasks = []
-
-        for task in tasks:
-          if task.retried_at is not None:
-            continue
-
-          current_version = task.version
-          current_attempts = task.attempts
-          
-          # 2. Try to "claim" via optimistic locking
-          result = session.execute(
-            update(Task)
-            .where(
-              Task.id == task.id,
-              Task.version == current_version,
-              Task.retried_at.is_(None)
+    def get_log_entries_by_node_id(self, node_id: UUID) -> list[LogEntry]:
+        """Return all log entries associated with a given node."""
+        with self.get_session() as session:
+            return (
+                session.query(LogEntry)
+                .filter(LogEntry.node_id == node_id)
+                .order_by(LogEntry.created_at)
+                .all()
             )
-            .values(
-              retried_at=now,
-              version=current_version + 1
-            )
-          )
-
-          # 3. If no row updated: someone else took it
-          if result.rowcount == 0:
-            continue
-
-          # 4. Create retry task
-          retry_task = Task(
-            name=task.name,
-            status=TaskStatus.CREATED,
-            run_at=now + timedelta(seconds=5 * current_attempts),
-            attempts=current_attempts + 1,
-            max_attempts=task.max_attempts,
-            previous_task_id=task.id,
-            timeout=task.timeout,
-            input=task.input,
-          )
-
-          new_tasks.append(retry_task)
-
-        session.add_all(new_tasks)
-        return len(new_tasks)
-
-
-  def set_progress(self, id: UUID, progress: int):
-    """Update the progress percentage of a task.
-    
-    Args:
-        id (UUID): Id of the task.
-        progress (int): The progress of the task (0-100)
-    """
-    with self._get_session() as session:
-      with session.begin():
-        task = self._load_task(session, id)
-        task.progress_percentage = max(0, min(progress, 100))
-
-
-  def end_task_success(self, id: UUID, output: Any):
-    """Mark a task as successfully completed.
-
-    Args:
-        id (UUID): Id of the task.
-        output (Any): Task result data.
-    """
-    if output is not None:
-      output = normalize_data(output)
-
-    with self._get_session() as session:
-      with session.begin():
-        task = self._load_task(session, id)
-        task.output = output
-        self._complete_progress(task, TaskStatus.COMPLETED)
-
-
-  def end_task_failure(self, id: UUID, error: dict):
-    """Mark a task as failed.
-
-    Args:
-        id (UUID): Id of the task.
-        error (dict): Error information to store.
-    """
-    with self._get_session() as session:
-      with session.begin():
-        task = self._load_task(session, id)
-        task.error = error
-        self._complete_progress(task, TaskStatus.FAILED)
-
-
-  def delete_task_by_id(self, id: UUID):
-    """Delete a task by its UUID.
-
-    Returns:
-        bool: True if deleted, False if task not found.
-    """
-    with self._get_session() as session:
-      with session.begin():
-        task = session.get(Task, id)
-        if task is None:
-          return False
-        session.delete(task)
-    return True
-  
-
-  def _complete_progress(self, task: Task, task_status: TaskStatus):
-    if not self._set_progress_manually:
-      task.progress_percentage = 100
-    task.status = task_status
-    task.end_date_time = datetime.now(timezone.utc)
-
-
-  def _load_task(self, session, id: UUID) -> Task:
-    task: Task = session.get(Task, id)
-    if task is None:
-      raise ValueError(f"Task {id} not found")
-    return task
-
-
-
-class LogStore():
-  """Database store for logging entries into Lilota."""
-
-  def __init__(self, db_url: str):
-    """
-    Args:
-        db_url (str): Database connection URL.
-    """
-    self._db_url = db_url
-    self._engine = None
-    self._Session = None
-
-
-  def _ensure_engine(self):
-    if self._engine is None:
-      self._engine = create_engine(self._db_url, pool_pre_ping=True)
-      self._Session = sessionmaker(
-        bind=self._engine,
-        expire_on_commit=False,
-      )
-
-
-  def get_session(self):
-    """Return a new SQLAlchemy session."""
-    self._ensure_engine()
-    return self._Session()
-  
-
-  def get_log_entries_by_node_id(self, node_id: UUID) -> list[LogEntry]:
-    """Return all log entries associated with a given node."""
-    with self.get_session() as session:
-      return (
-        session.query(LogEntry)
-          .filter(LogEntry.node_id == node_id)
-          .order_by(LogEntry.created_at)
-          .all()
-      )
-  
 
 
 class NodeLeaderStore(StoreBase):
-  """Store managing leader election for worker nodes."""
+    """Store managing leader election for worker nodes."""
 
-  def __init__(self, db_url: str, logger: logging.Logger, node_timeout_sec: int):
-    """
-    Args:
-        db_url (str): Database connection URL.
-        logger (logging.Logger): Logger for store operations.
-        node_timeout_sec (int): Leader lease timeout in seconds.
-    """
-    super().__init__(db_url, logger)
-    self._node_timeout_sec: int = node_timeout_sec
-  
+    def __init__(self, db_url: str, logger: logging.Logger, node_timeout_sec: int):
+        """
+        Args:
+            db_url (str): Database connection URL.
+            logger (logging.Logger): Logger for store operations.
+            node_timeout_sec (int): Leader lease timeout in seconds.
+        """
+        super().__init__(db_url, logger)
+        self._node_timeout_sec: int = node_timeout_sec
 
-  def try_acquire_leadership(self, node_id) -> bool:
-    """Attempt to acquire leadership for the given node.
+    def try_acquire_leadership(self, node_id) -> bool:
+        """Attempt to acquire leadership for the given node.
 
-    Returns True if leadership is acquired, False otherwise.
-    """
-    now = datetime.now(timezone.utc)
-    new_expiry = now + timedelta(seconds=self._node_timeout_sec)
-    
-    with self._get_session() as session:
-      try:
-        # Try to take over expired lease
-        result = session.execute(
-          update(NodeLeader)
-          .where(
-            NodeLeader.id == 1,
-            NodeLeader.lease_expires_at < now,
-          )
-          .values(
-            node_id=node_id,
-            lease_expires_at=new_expiry,
-          )
-        )
+        Returns True if leadership is acquired, False otherwise.
+        """
+        now = datetime.now(timezone.utc)
+        new_expiry = now + timedelta(seconds=self._node_timeout_sec)
 
-        if result.rowcount == 1:
-          session.commit()
-          if self._logger:
-            self._logger.debug(f"Leadership acquired (new node id: {node_id})")
-          return True
+        with self._get_session() as session:
+            try:
+                # Try to take over expired lease
+                result = session.execute(
+                    update(NodeLeader)
+                    .where(
+                        NodeLeader.id == 1,
+                        NodeLeader.lease_expires_at < now,
+                    )
+                    .values(
+                        node_id=node_id,
+                        lease_expires_at=new_expiry,
+                    )
+                )
 
-        # Check if row exists
-        exists = session.execute(
-          select(NodeLeader.id).where(NodeLeader.id == 1)
-        ).first()
+                if result.rowcount == 1:
+                    session.commit()
+                    if self._logger:
+                        self._logger.debug(
+                            f"Leadership acquired (new node id: {node_id})"
+                        )
+                    return True
 
-        if exists:
-          session.rollback()
-          return False
+                # Check if row exists
+                exists = session.execute(
+                    select(NodeLeader.id).where(NodeLeader.id == 1)
+                ).first()
 
-        # No row → try to create it
-        session.add(
-          NodeLeader(
-            id=1,
-            node_id=node_id,
-            lease_expires_at=new_expiry,
-          )
-        )
-        session.commit()
-        if self._logger:
-          self._logger.debug(f"Leadership acquired first time (node id: {node_id})")
-        return True
-      except IntegrityError:
-        # Someone else won the race to insert
-        session.rollback()
-        return False
-      except Exception:
-        session.rollback()
-        if self._logger:
-          self._logger.exception("Unexpected error in leader election")
-        raise
+                if exists:
+                    session.rollback()
+                    return False
 
-  
-  def renew_leadership(self, node_id):
-    """Renew leadership lease for the given node.
+                # No row → try to create it
+                session.add(
+                    NodeLeader(
+                        id=1,
+                        node_id=node_id,
+                        lease_expires_at=new_expiry,
+                    )
+                )
+                session.commit()
+                if self._logger:
+                    self._logger.debug(
+                        f"Leadership acquired first time (node id: {node_id})"
+                    )
+                return True
+            except IntegrityError:
+                # Someone else won the race to insert
+                session.rollback()
+                return False
+            except Exception:
+                session.rollback()
+                if self._logger:
+                    self._logger.exception("Unexpected error in leader election")
+                raise
 
-    Returns True if renewed successfully.
-    """
-    now = datetime.now(timezone.utc)
-    new_expiry = now + timedelta(seconds=self._node_timeout_sec)
-    
-    with self._get_session() as session:
-      try:
-        result = session.execute(
-          update(NodeLeader)
-          .where(
-            NodeLeader.id == 1,
-            NodeLeader.node_id == node_id,
-            NodeLeader.lease_expires_at >= now
-          )
-          .values(lease_expires_at=new_expiry)
-        )
+    def renew_leadership(self, node_id):
+        """Renew leadership lease for the given node.
 
-        session.commit()
-        renewed = result.rowcount == 1
-        if renewed and self._logger:
-          self._logger.debug(f"Leadership renewed (node id: {node_id})")
-        return renewed
-      except Exception as ex:
-        session.rollback()
-        if self._logger:
-          self._logger.exception(f"Renew leadership failed: {ex}")
-        raise
-    
+        Returns True if renewed successfully.
+        """
+        now = datetime.now(timezone.utc)
+        new_expiry = now + timedelta(seconds=self._node_timeout_sec)
+
+        with self._get_session() as session:
+            try:
+                result = session.execute(
+                    update(NodeLeader)
+                    .where(
+                        NodeLeader.id == 1,
+                        NodeLeader.node_id == node_id,
+                        NodeLeader.lease_expires_at >= now,
+                    )
+                    .values(lease_expires_at=new_expiry)
+                )
+
+                session.commit()
+                renewed = result.rowcount == 1
+                if renewed and self._logger:
+                    self._logger.debug(f"Leadership renewed (node id: {node_id})")
+                return renewed
+            except Exception as ex:
+                session.rollback()
+                if self._logger:
+                    self._logger.exception(f"Renew leadership failed: {ex}")
+                raise
