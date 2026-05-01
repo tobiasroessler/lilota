@@ -1,4 +1,3 @@
-from lilota.models import TaskProgress
 from lilota.worker import LilotaWorker
 from typing import Any
 

@@ -39,7 +39,7 @@ def main():
 
   # Retrieve task information from the database and print the result
   task: Task = lilota.get_task_by_id(task_id)
-  print(f"We add the numbers 2 and 3: ")
+  print("We add the numbers 2 and 3: ")
   print(task.output)
 
   # Stop lilota and stop all running processes
@@ -49,7 +49,9 @@ def main():
 try:
   main()
 except Exception as e:
-  import json, traceback, sys
+  import json
+  import traceback
+  import sys
   print(json.dumps({
       "type": type(e).__name__,
       "message": str(e),

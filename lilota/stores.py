@@ -192,7 +192,7 @@ class TaskStore(StoreBase):
     Returns:
         UUID: The unique identifier of the created task.
     """
-    if not input is None:
+    if input is not None:
       input = normalize_data(input)
 
     task = Task(
@@ -474,7 +474,7 @@ class TaskStore(StoreBase):
         id (UUID): Id of the task.
         output (Any): Task result data.
     """
-    if not output is None:
+    if output is not None:
       output = normalize_data(output)
 
     with self._get_session() as session:

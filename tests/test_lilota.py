@@ -225,7 +225,7 @@ class LilotaTestCase(TestCase):
     # Act
     try:
       id = lilota.schedule("hello_world")
-    except:
+    except Exception:
       lilota.stop()
 
     # Assert
@@ -253,7 +253,7 @@ class LilotaTestCase(TestCase):
     # Act
     try:  
       id = lilota.schedule("only_input_model", AddInput(a=1, b=2))
-    except:
+    except Exception:
       lilota.stop()
 
     # Assert
@@ -281,7 +281,7 @@ class LilotaTestCase(TestCase):
     # Act
     try:
       id = lilota.schedule("only_output_model")
-    except:
+    except Exception:
       lilota.stop()
 
     # Assert
@@ -311,7 +311,7 @@ class LilotaTestCase(TestCase):
     # Act
     try:
       id = lilota.schedule("only_taskprogress")
-    except:
+    except Exception:
       lilota.stop()
 
     # Assert
@@ -335,7 +335,7 @@ class LilotaTestCase(TestCase):
     # Act
     try:
       id = lilota.schedule("add", AddInput(a=1, b=2))
-    except:
+    except Exception:
       lilota.stop()
 
     # Assert
@@ -365,7 +365,7 @@ class LilotaTestCase(TestCase):
     # Act
     try:
       id = lilota.schedule("add_with_taskprogress", AddInputDataclass(a=1, b=2))
-    except:
+    except Exception:
       lilota.stop()
 
     # Assert
@@ -389,7 +389,7 @@ class LilotaTestCase(TestCase):
     # Act
     try:
       id = lilota.schedule("add_with_dataclasses", AddInputDataclass(a=1, b=2))
-    except:
+    except Exception:
       lilota.stop()
 
     # Assert
@@ -419,7 +419,7 @@ class LilotaTestCase(TestCase):
     # Act
     try:
       id = lilota.schedule("add_with_dict", { "a": 1, "b": 2 })
-    except:
+    except Exception:
       lilota.stop()
 
     # Assert
@@ -473,7 +473,7 @@ class LilotaTestCase(TestCase):
       for i in range(1, 501):
         id = lilota.schedule("add", AddInput(a=i, b=i))
         ids.append(id)
-    except:
+    except Exception:
       lilota.stop()
 
     # Assert
@@ -514,7 +514,7 @@ class LilotaTestCase(TestCase):
       for i in range(1, 6):
         id = lilota.schedule("add", AddInput(a=i, b=i))
         ids.append(id)
-    except:
+    except Exception:
       lilota.stop()
 
     # Assert
@@ -550,7 +550,7 @@ class LilotaTestCase(TestCase):
     # Act
     try:
       id = lilota.schedule("add_with_exception", AddInput(a=1, b=2))
-    except:
+    except Exception:
       lilota.stop()
 
     # Assert
@@ -580,7 +580,7 @@ class LilotaTestCase(TestCase):
     # Act
     try:
       lilota.start()
-    except:
+    except Exception:
       lilota.stop()
 
     # Assert
@@ -634,7 +634,7 @@ class LilotaTestCase(TestCase):
       self.assertIsNotNone(process)
       self.assertIsNone(process.proc.poll())
       task_id = lilota.schedule("infinite_loop")
-    except:
+    except Exception:
       lilota.stop()
 
     # Assert (debugging not possible)

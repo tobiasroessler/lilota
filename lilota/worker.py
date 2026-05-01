@@ -261,7 +261,7 @@ class LilotaWorker(LilotaNode):
     self._heartbeat.start()
 
     # Log Node started message
-    self._logger.debug(f"Node started")
+    self._logger.debug("Node started")
 
     # Execute tasks
     self._execute_tasks()

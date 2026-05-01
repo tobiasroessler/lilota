@@ -385,7 +385,7 @@ class Lilota():
       interval=self._process_manager_interval,
       process_manager=self._process_manager
     )
-    self._process_manager_heartbeat = Heartbeat(f"process_manager", process_manager_task, None)
+    self._process_manager_heartbeat = Heartbeat("process_manager", process_manager_task, None)
     self._process_manager_heartbeat.start()
 
 

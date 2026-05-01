@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from lilota.models import TaskProgress
 from lilota.worker import LilotaWorker
 import logging
 from typing import Any

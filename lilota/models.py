@@ -1,4 +1,4 @@
-from typing import Any, Callable, Type, TypeVar, Optional, Any, Protocol, runtime_checkable
+from typing import Any, Callable, Type, TypeVar, Optional, Protocol, runtime_checkable
 from sqlalchemy import Integer, String, Text, DateTime, JSON, CheckConstraint, Index
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column
 from datetime import datetime, timezone, timedelta

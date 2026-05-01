@@ -65,7 +65,7 @@ class Heartbeat(threading.Thread):
       # Execute
       try:
         self._task.execute()
-      except Exception as ex:
+      except Exception:
         if self._logger is not None:
           self._logger.exception("Heartbeat task failed")
         else:

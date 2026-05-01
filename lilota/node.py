@@ -206,9 +206,9 @@ class LilotaNode(ABC):
     self._logger.debug(f"Delete task with id {id}")
     success = self._task_store.delete_task_by_id(id)
     if success:
-      self._logger.debug(f"Task deleted!")
+      self._logger.debug("Task deleted!")
     else:
-      self._logger.debug(f"Task not deleted!")
+      self._logger.debug("Task not deleted!")
     return success
   
 

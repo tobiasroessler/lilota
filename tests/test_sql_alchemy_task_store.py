@@ -96,7 +96,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
     for status in statuses_to_test:
       with self.subTest(status=status):
 
-        task_id: Task = self.create_task(Task(
+        self.create_task(Task(
           name="test",
           status=status,
           run_at=datetime.now(timezone.utc)
@@ -114,7 +114,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
     # Arrange
     worker_id = uuid4()
     logger = logging.getLogger("test_logger")
-    task1_id: Task = self.create_task(Task(
+    self.create_task(Task(
       name="test",
       status=TaskStatus.CREATED,
       run_at=datetime.now(timezone.utc) + timedelta(minutes=5)

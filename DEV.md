@@ -4,7 +4,7 @@
 
 * uv init .
 * uv venv --python 3.12
-* uv add --group dev build twine mkdocs-material mkdocstrings-python
+* uv add --group dev build twine mkdocs-material mkdocstrings-python ruff
 * uv add alembic psycopg psycopg-binary SQLAlchemy
 * uv sync
   
