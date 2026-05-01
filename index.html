@@ -1,0 +1,1334 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://tobiasroessler.github.io/lilota/">
+      
+      
+      
+        <link rel="next" href="lilota-is-simple/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>lilota</title>
+      
+    
+    
+      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#lilota" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="." title="lilota" class="md-header__button md-logo" aria-label="lilota" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            lilota
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              lilota
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="." title="lilota" class="md-nav__button md-logo" aria-label="lilota" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    lilota
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    lilota
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="." class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    lilota
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Features
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-to-use-lilota" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to use lilota
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Installation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick example
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick example">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#myscriptpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        myscript.py
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="myscript.py">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-a-worker-instance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a worker instance
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#register-a-background-task" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Register a background task
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#integration-of-lilota" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration of lilota
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Integration of lilota">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#define-input-and-output-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Define input and output models
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-a-lilota-instance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a Lilota instance
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#start-lilota" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Start lilota
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#schedule-a-task" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schedule a task
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#retrieve-task-information-including-the-output-if-available" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retrieve task information including the output (if available)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="lilota-is-simple/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lilota is simple
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="task-registration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Task registration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="worker-maintenance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Worker maintenance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="task-timeout/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Task timeout
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="retry-mechanism/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Retry mechanism
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="shutdown/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Shutdown
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="database/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Database
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="error-handling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Error handling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="lilota-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lilota
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Features
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-to-use-lilota" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to use lilota
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Installation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick example
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick example">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#myscriptpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        myscript.py
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="myscript.py">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-a-worker-instance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a worker instance
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#register-a-background-task" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Register a background task
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#integration-of-lilota" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration of lilota
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Integration of lilota">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#define-input-and-output-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Define input and output models
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-a-lilota-instance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a Lilota instance
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#start-lilota" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Start lilota
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#schedule-a-task" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schedule a task
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#retrieve-task-information-including-the-output-if-available" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retrieve task information including the output (if available)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="lilota">lilota</h1>
+<p><strong>lilota</strong> is a lightweight Python library for executing long-running
+tasks in the background without the overhead of full-fledged task queue
+systems. While those tools are powerful and 
+valuable, <strong>lilota</strong> focuses on scenarios where a simpler approach is sufficient.</p>
+<p>It is designed for simple, asynchronous task execution with minimal
+setup and overhead.</p>
+<ul>
+<li><a href="#lilota">lilota</a></li>
+<li><a href="#features">Features</a></li>
+<li><a href="#when-to-use-lilota">When to use lilota</a></li>
+<li><a href="#installation">Installation</a></li>
+<li><a href="#quick-example">Quick example</a><ul>
+<li><a href="#myscriptpy">myscript.py</a></li>
+<li><a href="#create-a-worker-instance">Create a worker instance</a></li>
+<li><a href="#register-a-background-task">Register a background task</a></li>
+<li><a href="#integration-of-lilota">Integration of lilota</a></li>
+<li><a href="#define-input-and-output-models">Define input and output models</a></li>
+<li><a href="#create-a-lilota-instance">Create a Lilota instance</a></li>
+<li><a href="#start-lilota">Start lilota</a></li>
+<li><a href="#schedule-a-task">Schedule a task</a></li>
+<li><a href="#retrieve-task-information-including-the-output-if-available">Retrieve task information including the output (if available)</a></li>
+</ul>
+</li>
+<li><a href="#documentation">Documentation</a></li>
+<li><a href="#examples">Examples</a></li>
+</ul>
+<h2 id="features">Features</h2>
+<ul>
+<li>Run long-running tasks</li>
+<li>Simple API and minimal configuration and setup</li>
+<li>Persistent task state stored in a database</li>
+<li>No message broker required</li>
+<li>Suitable for applications that use background jobs, i.e. web applications.</li>
+</ul>
+<h2 id="when-to-use-lilota">When to use lilota</h2>
+<p>Use <strong>lilota</strong> when your application needs to run tasks that take time,
+such as:</p>
+<ul>
+<li>image or file processing</li>
+<li>report generation</li>
+<li>sending emails</li>
+<li>heavy computations</li>
+</ul>
+<p>Instead of blocking the request, <strong>lilota</strong> lets you start the task in the
+background.</p>
+<h2 id="installation">Installation</h2>
+<pre><code class="language-bash">pip install lilota
+</code></pre>
+<h2 id="quick-example">Quick example</h2>
+<p>This example demonstrates how to add two numbers using a function that runs in the background.</p>
+<p>This could, of course, also be a function that generates a report or performs
+a heavy computation. For simplicity, we will just add two numbers.</p>
+<p>First, we have to create a script that has an instance of a worker (<strong>LilotaWorker</strong>). This worker
+registers one or several task-functions that can be executed later by a scheduler. </p>
+<h3 id="myscriptpy">myscript.py</h3>
+<pre><code class="language-python">from dataclasses import dataclass
+from lilota.worker import LilotaWorker
+
+
+@dataclass
+class AddInput():
+    a: int
+    b: int
+
+
+@dataclass
+class AddOutput():
+  sum: int
+
+
+worker = LilotaWorker(
+  db_url=&quot;postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample&quot;
+)
+
+
+@worker.register(&quot;add&quot;, input_model=AddInput, output_model=AddOutput)
+def add(input: AddInput) -&gt; AddOutput:
+  return AddOutput(input.a + input.b)
+
+
+def main():
+  worker.start()
+
+
+if __name__ == &quot;__main__&quot;:
+  main()
+</code></pre>
+<h4 id="create-a-worker-instance">Create a worker instance</h4>
+<pre><code class="language-python">worker = LilotaWorker(
+  db_url=&quot;postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample&quot;
+)
+</code></pre>
+<p>In this example we use a url to a <strong>postgres</strong> database. <strong>lilota</strong> uses <strong>SQLAlchemy</strong> and therefore all
+databases that are supported by SQLAlchemy can be used here.</p>
+<h4 id="register-a-background-task">Register a background task</h4>
+<pre><code class="language-python">@worker.register(&quot;add&quot;, input_model=AddInput, output_model=AddOutput)
+def add(data: AddInput) -&gt; AddOutput:
+  return AddOutput(sum=data.a + data.b)
+</code></pre>
+<h3 id="integration-of-lilota">Integration of lilota</h3>
+<p>The script created above is passed to a <strong>Lilota</strong> instance for execution. </p>
+<p>That instance can start multiple processes, each of which executes the script once. You can specify the number of workers for a <strong>Lilota</strong> instance. By default, it is set to <strong>cpu_count()</strong>.</p>
+<p>In this example, we use two model classes: one for input arguments and one for the output.
+These models should typically be defined in their own module and shared between <strong>Lilota</strong> and <strong>LilotaWorker</strong>.</p>
+<pre><code class="language-python">from dataclasses import dataclass
+from lilota.core import Lilota
+from lilota.models import Task
+import time
+
+
+@dataclass
+class AddInput():
+    a: int
+    b: int
+
+
+@dataclass
+class AddOutput():
+  sum: int
+
+
+lilota = Lilota(
+  db_url=&quot;postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample&quot;,
+  script_path=&quot;sample/myscript.py&quot;,
+  number_of_workers=8
+)
+
+
+def main():
+  # Start lilota
+  lilota.start()
+
+  # Schedule a task
+  task_id = lilota.schedule(&quot;add&quot;, AddInput(a=2, b=3))
+
+  # Wait one second because Lilota runs in the background and decides when to pick up a task.
+  # This is normally not needed. We do it here because we want to wait until the task 
+  # has been executed.
+  time.sleep(1)
+
+  # Retrieve task information from the database and print the result
+  task: Task = lilota.get_task_by_id(task_id)
+  print(f&quot;We add the numbers 2 and 3: &quot;)
+  print(task.output)
+
+
+if __name__ == &quot;__main__&quot;:
+  main()
+</code></pre>
+<h4 id="define-input-and-output-models">Define input and output models</h4>
+<ul>
+<li>Input and output models are optional</li>
+<li>You do not have to use <strong>dataclasses</strong> for these models. You can use any
+serializable model, such as <strong>pydantic</strong> models.</li>
+<li>It is only important that the models are serializable, since they are
+stored in the database.</li>
+<li><strong>lilota</strong> uses a <strong>ModelProtocol</strong>. To comply with it, you only need
+to define an <strong>as_dict</strong> method. A full example using pydantic can be found here:
+<a href="https://github.com/tobiasroessler/lilota-sample/blob/main/src/3-add-two-numbers-using-pydantic">3-add-two-numbers-using-pydantic</a></li>
+<li>lilota also supports passing a <strong>TaskProgress</strong> instance to the task function.
+This can be used to update progress information in the database. It is important to set 
+<strong>set_progress_manually=True</strong> when creating the <strong>lilota</strong> instance. A full example 
+can be found here:
+<a href="https://github.com/tobiasroessler/lilota-sample/blob/main/src/5-setting-task-progress-manually">5-setting-task-progress-manually</a></li>
+</ul>
+<h4 id="create-a-lilota-instance">Create a Lilota instance</h4>
+<pre><code class="language-python">lilota = Lilota(
+  db_url=&quot;postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample&quot;,
+  script_path=&quot;sample/myscript.py&quot;,
+  number_of_workers=8
+)
+</code></pre>
+<p>Additionally it is possible to create a <strong>Lilota scheduler</strong> using a class method:</p>
+<pre><code class="language-python">scheduler: LilotaScheduler = Lilota.scheduler(
+  db_url=&quot;postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample&quot;
+)
+</code></pre>
+<p>If you need a separate application that runs workers but does not require a scheduler, you can create it like this:</p>
+<pre><code class="language-python">workers = Lilota.workers(
+  db_url=&quot;postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample&quot;,
+  script_path=str(Path(__file__).resolve().parent / &quot;workerscript.py&quot;),
+  number_of_workers=1
+)
+</code></pre>
+<p>A full example using the class methods can be found here:
+<a href="https://github.com/tobiasroessler/lilota-sample/blob/main/src/7-using-factory-methods">7-using-factory-methods</a></p>
+<h4 id="start-lilota">Start lilota</h4>
+<pre><code class="language-python">lilota.start()
+</code></pre>
+<h4 id="schedule-a-task">Schedule a task</h4>
+<pre><code class="language-python">task_id = lilota.schedule(&quot;add&quot;, AddInput(a=2, b=3))
+</code></pre>
+<p>The <strong>schedule</strong> function creates a task entry in the database and starts
+executing it immediately. The ID of the stored task is returned.</p>
+<h4 id="retrieve-task-information-including-the-output-if-available">Retrieve task information including the output (if available)</h4>
+<pre><code class="language-python">task: Task = lilota.get_task_by_id(task_id)
+add_output = AddOutput(**task.output)
+print(add_output.sum)
+</code></pre>
+<h2 id="documentation">Documentation</h2>
+<p><a href="https://tobiasroessler.github.io/lilota/">https://tobiasroessler.github.io/lilota/</a></p>
+<h2 id="examples">Examples</h2>
+<table>
+<thead>
+<tr>
+<th>Example</th>
+<th>URL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A simple "Hello World" example</td>
+<td><a href="https://github.com/tobiasroessler/lilota-sample/blob/main/src/1-hello-world">1-hello-world</a></td>
+</tr>
+<tr>
+<td>Add two numbers using an input and an output model</td>
+<td><a href="https://github.com/tobiasroessler/lilota-sample/blob/main/src/2-add-two-numbers">2-add-two-numbers</a></td>
+</tr>
+<tr>
+<td>Add two numbers using a pydantic input and an output model</td>
+<td><a href="https://github.com/tobiasroessler/lilota-sample/blob/main/src/3-add-two-numbers-using-pydantic">3-add-two-numbers-using-pydantic</a></td>
+</tr>
+<tr>
+<td>Database access inside the task function</td>
+<td><a href="https://github.com/tobiasroessler/lilota-sample/blob/main/src/4-using-db-inside-task">4-using-db-inside-task</a></td>
+</tr>
+<tr>
+<td>Set the task progress manually in a task function</td>
+<td><a href="https://github.com/tobiasroessler/lilota-sample/blob/main/src/5-setting-task-progress-manually">5-setting-task-progress-manually</a></td>
+</tr>
+<tr>
+<td>Use a worker script that uses modules</td>
+<td><a href="https://github.com/tobiasroessler/lilota-sample/blob/main/src/6-script-with-modules">6-script-with-modules</a></td>
+</tr>
+<tr>
+<td>Use class methods to create a scheduler and workers</td>
+<td><a href="https://github.com/tobiasroessler/lilota-sample/blob/main/src/7-using-factory-methods">7-using-factory-methods</a></td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": [], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
