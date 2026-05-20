@@ -1,4 +1,4 @@
-from lilota.models import TaskProgress
+from lilota.models import TaskContext
 from lilota.worker import LilotaWorker
 from typing import Any
 
@@ -18,21 +18,18 @@ class AddInput:
 worker = LilotaWorker(
     db_url="postgresql+psycopg://postgres:postgres@localhost:5433/lilota_test",
     node_heartbeat_interval_jitter=None,
-    max_task_heartbeat_interval=0.1,
-    set_progress_manually=True,
+    max_task_heartbeat_interval=0.1
 )
 
 
-@worker.register("only_taskprogress", task_progress=TaskProgress)
-def only_taskprogress(task_progress: TaskProgress) -> None:
-    task_progress.set(50)
+@worker.task
+def only_taskprogress(task_context: TaskContext) -> None:
+    task_context.progress.set(50)
 
 
-@worker.register(
-    "add_with_taskprogress", input_model=AddInput, task_progress=TaskProgress
-)
-def add_with_taskprogress(data: AddInput, task_progress: TaskProgress):
-    task_progress.set(50)
+@worker.task
+def add_with_taskprogress(data: AddInput, task_context: TaskContext):
+    task_context.progress.set(50)
 
 
 def main():

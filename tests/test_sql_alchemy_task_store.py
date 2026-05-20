@@ -42,7 +42,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
         worker_id = uuid4()
         logger = logging.getLogger("test_logger")
         self.delete_all_tasks()
-        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger)
 
         # Act
         task: Task = store.get_next_task(worker_id)
@@ -63,7 +63,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
                 locked_at=None,
             )
         )
-        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger)
 
         # Act
         next_task: Task = store.get_next_task(worker_id)
@@ -95,7 +95,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
                 self.create_task(
                     Task(name="test", status=status, run_at=datetime.now(timezone.utc))
                 )
-                store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+                store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger)
 
                 # Act
                 next_task: Task = store.get_next_task(worker_id)
@@ -123,7 +123,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
                 run_at=datetime.now(timezone.utc),
             )
         )
-        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger)
 
         # Act
         next_task: Task = store.get_next_task(worker_id)
@@ -145,7 +145,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
                 expires_at=datetime(2026, 3, 20, 1, 0, 0),
             )
         )
-        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger)
 
         # Act
         store.expire_overdue_tasks()
@@ -167,7 +167,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
                 expires_at=None,
             )
         )
-        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger)
 
         # Act
         store.expire_overdue_tasks()
@@ -187,7 +187,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
                 expires_at=datetime(2026, 3, 20, 1, 0, 0),
             )
         )
-        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger)
 
         # Act
         store.expire_overdue_tasks()
@@ -207,7 +207,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
                 timeout=None,
             )
         )
-        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger)
 
         # Act
         task: Task = store.start_task(task_id, 1)
@@ -234,7 +234,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
                 run_at=datetime.now(timezone.utc) + timedelta(minutes=5),
             )
         )
-        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger)
 
         # Act
         task: Task = store.start_task(task_id, 1, timedelta(seconds=timeout_in_sec))
@@ -260,7 +260,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
                 run_at=datetime.now(timezone.utc) + timedelta(minutes=5),
             )
         )
-        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger, False)
+        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, logger)
 
         # Act
         task: Task = store.start_task(task_id, 1, None)
@@ -277,7 +277,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
     def test_retry_tasks___with_no_tasks___should_return_zero(self):
         # Arrange
         logger = logging.getLogger("test_logger")
-        store = TaskStore(self.DB_URL, logger, False)
+        store = TaskStore(self.DB_URL, logger)
 
         # Act
         result = store.retry_tasks()
@@ -299,7 +299,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
             )
         )
 
-        store = TaskStore(self.DB_URL, logger, False)
+        store = TaskStore(self.DB_URL, logger)
 
         # Act
         result = store.retry_tasks()
@@ -333,7 +333,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
             )
         )
 
-        store = TaskStore(self.DB_URL, logger, False)
+        store = TaskStore(self.DB_URL, logger)
 
         # Act
         result = store.retry_tasks()
@@ -355,7 +355,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
             )
         )
 
-        store = TaskStore(self.DB_URL, logger, False)
+        store = TaskStore(self.DB_URL, logger)
 
         # Act
         result = store.retry_tasks()
@@ -377,7 +377,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
         )
 
         self.create_task(task)
-        store = TaskStore(self.DB_URL, logger, False)
+        store = TaskStore(self.DB_URL, logger)
 
         # Act
         result = store.retry_tasks()
@@ -400,7 +400,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
             )
         )
 
-        store = TaskStore(self.DB_URL, logger, False)
+        store = TaskStore(self.DB_URL, logger)
 
         # Act
         before = datetime.now(timezone.utc)
@@ -432,7 +432,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
                 )
             )
 
-        store = TaskStore(self.DB_URL, logger, False)
+        store = TaskStore(self.DB_URL, logger)
 
         # Act
         result = store.retry_tasks(batch_size=2)

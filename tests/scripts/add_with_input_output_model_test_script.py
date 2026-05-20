@@ -29,7 +29,7 @@ worker = LilotaWorker(
 )
 
 
-@worker.register("add", input_model=AddInput, output_model=AddOutput)
+@worker.task
 def add(data: AddInput) -> AddOutput:
     return AddOutput(sum=data.a + data.b)
 

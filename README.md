@@ -14,10 +14,7 @@ setup and overhead.
   - [Installation](#installation)
   - [Quick example](#quick-example)
     - [myscript.py](#myscriptpy)
-      - [Create a worker instance](#create-a-worker-instance)
-      - [Register a background task](#register-a-background-task)
     - [Integration of lilota](#integration-of-lilota)
-      - [Define input and output models](#define-input-and-output-models)
       - [Create a Lilota instance](#create-a-lilota-instance)
       - [Start lilota](#start-lilota)
       - [Schedule a task](#schedule-a-task)
@@ -90,7 +87,7 @@ worker = LilotaWorker(
 )
 
 
-@worker.register("add", input_model=AddInput, output_model=AddOutput)
+@worker.task
 def add(input: AddInput) -> AddOutput:
   return AddOutput(input.a + input.b)
 
@@ -101,27 +98,6 @@ def main():
 
 if __name__ == "__main__":
   main()
-```
-
-
-#### Create a worker instance
-
-``` python
-worker = LilotaWorker(
-  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample"
-)
-```
-
-In this example we use a url to a **postgres** database. **lilota** uses **SQLAlchemy** and therefore all
-databases that are supported by SQLAlchemy can be used here.
-
-
-#### Register a background task
-
-``` python
-@worker.register("add", input_model=AddInput, output_model=AddOutput)
-def add(data: AddInput) -> AddOutput:
-  return AddOutput(sum=data.a + data.b)
 ```
 
 
@@ -180,23 +156,6 @@ def main():
 if __name__ == "__main__":
   main()
 ```
-
-
-#### Define input and output models
-
-* Input and output models are optional
-* You do not have to use **dataclasses** for these models. You can use any
-serializable model, such as **pydantic** models.
-* It is only important that the models are serializable, since they are
-stored in the database.
-* **lilota** uses a **ModelProtocol**. To comply with it, you only need
-to define an **as_dict** method. A full example using pydantic can be found here:
-[3-add-two-numbers-using-pydantic](https://github.com/tobiasroessler/lilota-sample/blob/main/src/3-add-two-numbers-using-pydantic)
-* lilota also supports passing a **TaskProgress** instance to the task function.
-This can be used to update progress information in the database. It is important to set 
-**set_progress_manually=True** when creating the **lilota** instance. A full example 
-can be found here:
-[5-setting-task-progress-manually](https://github.com/tobiasroessler/lilota-sample/blob/main/src/5-setting-task-progress-manually)
 
 
 #### Create a Lilota instance

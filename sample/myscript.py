@@ -1,5 +1,6 @@
 import sys
 import os
+from lilota.models import TaskContext
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from dataclasses import dataclass
@@ -22,8 +23,8 @@ worker = LilotaWorker(
 )
 
 
-@worker.register("add", input_model=AddInput, output_model=AddOutput)
-def add(input: AddInput) -> AddOutput:
+@worker.task
+def add(input: AddInput, ctx: TaskContext) -> AddOutput:
     return AddOutput(input.a + input.b)
 
 

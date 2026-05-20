@@ -57,6 +57,7 @@ class TaskProgress:
     def __init__(self, task_id: int, set_progress: Callable[[int, int], None]):
         self.task_id = task_id
         self.set_progress = set_progress
+        self.set_progress_manually = False
 
     def set(self, progress: int):
         """Update the progress of the task.
@@ -65,6 +66,55 @@ class TaskProgress:
           progress (int): Progress value (typically 0–100).
         """
         self.set_progress(self.task_id, progress)
+        self.set_progress_manually = True
+
+
+class TaskContext:
+    """Runtime context injected into Lilota tasks.
+
+    The task context provides access to runtime-only services and metadata
+    during task execution. It is created by the worker runtime and injected
+    automatically into task functions that declare a ``TaskContext`` parameter.
+
+    Example:
+        @lilota.task
+        def process(data: InputModel, ctx: TaskContext):
+            ctx.logger.info("starting")
+            ctx.progress.update(50)
+
+    Attributes:
+        task_id (Optional[str]):
+            Unique identifier of the currently executing task.
+
+        progress (Optional[TaskProgress]):
+            Progress tracking interface for updating task execution progress.
+
+        logger (Optional[logging.Logger]):
+            Logger instance associated with the current task execution.
+    """
+
+    def __init__(
+        self,
+        *,
+        task_id=None,
+        progress=None,
+        logger=None,
+    ):
+        """Initialize a task execution context.
+
+        Args:
+            task_id (Optional[str]):
+                Unique identifier of the currently executing task.
+
+            progress (Optional[TaskProgress]):
+                Progress tracking interface for updating task progress.
+
+            logger (Optional[logging.Logger]):
+                Logger instance associated with the task execution.
+        """
+        self.task_id = task_id
+        self.progress = progress
+        self.logger = logger
 
 
 T = TypeVar("T", bound="ModelProtocol")
@@ -96,7 +146,8 @@ class RegisteredTask:
         deserialize input payloads.
       output_model (Optional[Type]): Optional output model used to
         serialize the task result.
-      task_progress (Optional[TaskProgress]): Optional progress helper.
+      input_param_name (Optional[str]): Name of the input parameter.
+      context_param_name (Optional[str]): Name of the context parameter.
       timeout (Optional[timedelta]): Optional timeout that can be set for a task.
       max_attempts (int): Upper limit on how many times the task may be executed.
     """
@@ -106,23 +157,25 @@ class RegisteredTask:
         func: Callable,
         input_model: Optional[Type],
         output_model: Optional[Type],
-        task_progress: Optional[TaskProgress],
+        input_param_name: Optional[str],
+        context_param_name: Optional[str],
         timeout: Optional[timedelta],
         max_attempts: int,
     ):
         self.func = func
         self.input_model = input_model
         self.output_model = output_model
-        self.task_progress = task_progress
+        self.input_param_name = input_param_name
+        self.context_param_name = context_param_name
         self.timeout = timeout
         self.max_attempts = max_attempts
 
-    def __call__(self, raw_input: Any, task_progress: TaskProgress):
+    def __call__(self, raw_input: Any, task_context: TaskContext):
         """Execute the registered task.
 
         Args:
           raw_input (Any): Raw input payload stored in the database.
-          task_progress (TaskProgress): Progress tracking object.
+          task_context (TaskContext): Task context that contains a TaskProgress object and a logger object.
 
         Returns:
           Any: Serialized task result.
@@ -131,17 +184,19 @@ class RegisteredTask:
         # Deserialize input
         input_value = self._deserialize_input(raw_input)
 
+        # Set the kwargs
+        kwargs = {}
+
+        # Set input parameter
+        if input_value is not None:
+            kwargs[self.input_param_name] = input_value
+
+        # Set task context parameter
+        if task_context is not None:
+            kwargs[self.context_param_name] = task_context
+
         # Execute the function
-        if task_progress is None:
-            if input_value is None:
-                result = self.func()
-            else:
-                result = self.func(input_value)
-        else:
-            if input_value is None:
-                result = self.func(task_progress)
-            else:
-                result = self.func(input_value, task_progress)
+        result = self.func(**kwargs)
 
         # Serialize output to JSON-safe dict
         return self._serialize_output(result)

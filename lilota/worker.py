@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
-from typing import Callable, Type, Optional, Any
+from typing import Callable, Type, Optional, Any, get_type_hints
 from lilota.node import LilotaNode, NodeHeartbeatTask
-from lilota.models import NodeType, Task, TaskProgress, RegisteredTask
+from lilota.models import NodeType, Task, TaskProgress, RegisteredTask, TaskContext
 from lilota.logging import create_context_logger
 from lilota.stores import NodeStore, NodeLeaderStore, TaskStore
 from lilota.heartbeat import Heartbeat
@@ -10,6 +10,7 @@ import logging
 import os
 import threading
 import time
+import inspect
 
 
 class WorkerHeartbeatTask(NodeHeartbeatTask):
@@ -123,7 +124,6 @@ class LilotaWorker(LilotaNode):
         node_timeout_sec: int = 20,
         task_heartbeat_interval: float = 0.1,
         max_task_heartbeat_interval: float = 5.0,
-        set_progress_manually: bool = False,
         logging_level=logging.INFO,
         **kwargs,
     ):
@@ -142,8 +142,6 @@ class LilotaWorker(LilotaNode):
             between polling attempts for tasks. Defaults to 0.1.
           max_task_heartbeat_interval (float, optional): Maximum polling interval
             when no tasks are available. Defaults to 5.0.
-          set_progress_manually (bool, optional): User is responsible for setting
-          the task progress. Defaults to False.
           logging_level (int, optional): Logging level used by the worker.
           **kwargs: Additional keyword arguments passed to ``LilotaNode``.
         """
@@ -170,8 +168,46 @@ class LilotaWorker(LilotaNode):
         self._node_heartbeat_interval_jitter = node_heartbeat_interval_jitter
         self._task_heartbeat_interval: float = task_heartbeat_interval
         self._max_task_heartbeat_interval: float = max_task_heartbeat_interval
-        self._set_progress_manually: bool = set_progress_manually
         self._registry: dict[str, RegisteredTask] = {}
+
+    def _analyze_task_signature(self, func):
+        sig = inspect.signature(func)
+        hints = get_type_hints(func)
+
+        input_model = None
+        input_param_name = None
+        context_param_name = None
+
+        params = list(sig.parameters.values())
+        if len(params) > 2:
+            raise TypeError(
+                "Lilota tasks support:\n"
+                "- no parameters\n"
+                "- payload\n"
+                "- payload + TaskContext"
+            )
+
+        for param in params:
+            annotation = hints.get(param.name)
+
+            if annotation is TaskContext:
+                context_param_name = param.name
+                continue
+
+            if input_model is not None:
+                raise TypeError("Only one input parameter is allowed")
+
+            input_model = annotation
+            input_param_name = param.name
+
+        output_model = hints.get("return")
+
+        return {
+            "input_model": input_model,
+            "input_param_name": input_param_name,
+            "context_param_name": context_param_name,
+            "output_model": output_model,
+        }
 
     def _register(
         self,
@@ -180,7 +216,8 @@ class LilotaWorker(LilotaNode):
         *,
         input_model: Optional[Type[Any]] = None,
         output_model: Optional[Type[Any]] = None,
-        task_progress: Optional[TaskProgress] = None,
+        input_param_name: Optional[str] = None,
+        context_param_name: Optional[str] = None,
         timeout: Optional[timedelta] = None,
         max_attempts: int = MAX_ATTEMPTS,
     ):
@@ -192,67 +229,55 @@ class LilotaWorker(LilotaNode):
         if name in self._registry:
             raise RuntimeError(f"Task {name!r} is already registered")
 
-        if task_progress is not None and not isinstance(
-            task_progress, type(TaskProgress)
-        ):
-            raise TypeError("task_progress must be of type TaskProgress")
-
         # Register the task
         task = RegisteredTask(
             func=func,
             input_model=input_model,
             output_model=output_model,
-            task_progress=task_progress,
+            input_param_name=input_param_name,
+            context_param_name=context_param_name,
             timeout=timeout,
             max_attempts=max_attempts,
         )
 
         self._registry[name] = task
 
-    def register(
+    def task(
         self,
-        name: str,
+        func=None,
         *,
-        input_model=None,
-        output_model=None,
-        task_progress=None,
-        timeout=timedelta(minutes=5),
-        max_attempts=MAX_ATTEMPTS,
+        name: Optional[str] = None,
+        timeout: timedelta = timedelta(minutes=5),
+        max_attempts: int = MAX_ATTEMPTS,
     ):
-        """Decorator for registering a task function.
+        def decorator(fn):
+            # Analyze the task signature
+            inferred = self._analyze_task_signature(fn)
 
-        This method allows task registration using decorator syntax.
+            # Task name
+            task_name = name or fn.__name__
 
-        Example:
-          @lilota.register("my_task")
-          def my_task(data):
-            return data
-
-        Args:
-          name (str): Unique name of the task.
-          input_model (Optional[Type[Any]]): Optional input validation model.
-          output_model (Optional[Type[Any]]): Optional output validation model.
-          task_progress (Optional[TaskProgress]): Task progress tracking strategy.
-          timeout (Optional[timedelta]): Optional timeout that can be set for a task.
-          max_attempts (int): Upper limit on how many times the task may be executed.
-            Once the number of attempts reaches this value, the task will no longer be retried.
-
-        Returns:
-          Callable: A decorator that registers the function.
-        """
-
-        def decorator(func):
+            # Register the task in the registry
             self._register(
-                name=name,
-                func=func,
-                input_model=input_model,
-                output_model=output_model,
-                task_progress=task_progress,
+                name=task_name,
+                func=fn,
+                input_model=inferred["input_model"],
+                output_model=inferred["output_model"],
+                input_param_name=inferred["input_param_name"],
+                context_param_name=inferred["context_param_name"],
                 timeout=timeout,
                 max_attempts=max_attempts,
             )
-            return func
 
+            return fn
+
+        # Supports:
+        # @lilota.task
+        if func is not None:
+            return decorator(func)
+
+        # Supports:
+        # @lilota.task(...)
         return decorator
 
     def _on_started(self):
@@ -299,12 +324,15 @@ class LilotaWorker(LilotaNode):
                     self._logger, node_id=self._node_id, task_id=task_id
                 )
 
+                # Create the TaskProgress object
+                task_progress = TaskProgress(task.id, self._task_store.set_progress)
+
                 # Get the registered task
                 registered_task = self._registry.get(task.name)
                 if registered_task is None:
                     error_message = f"Task {task.name!r} not registered"
                     error = error_to_dict(error_message)
-                    self._task_store.end_task_failure(task_id, error)
+                    self._task_store.end_task_failure(task_id, error, task_progress)
                     logger.error(error_message)
                 else:
                     # Execute the task
@@ -316,24 +344,22 @@ class LilotaWorker(LilotaNode):
                             task_id, max_attempts, timeout
                         )
 
-                        # Set task_progress object if available
-                        task_progress: TaskProgress = None
-                        if registered_task.task_progress is not None:
-                            task_progress = TaskProgress(
-                                task_id, self._task_store.set_progress
-                            )
-
                         # Run task
                         result = self._execute_task_with_watchdog(
-                            started_task, registered_task, task_progress, logger
+                            started_task, 
+                            registered_task, 
+                            task_progress,
+                            logger
                         )
 
                         # Set status to completed
-                        self._task_store.end_task_success(task_id, result)
+                        self._task_store.end_task_success(task_id, result, task_progress)
                     except Exception as ex:
                         self._logger.exception(f"Task execution failed (id: {task_id})")
                         self._task_store.end_task_failure(
-                            task_id, exception_to_dict(ex)
+                            task_id, 
+                            exception_to_dict(ex),
+                            task_progress
                         )
                         raise
             else:
@@ -350,17 +376,28 @@ class LilotaWorker(LilotaNode):
         task_progress: TaskProgress,
         logger: logging.Logger,
     ):
+        # Create the task context
+        task_context: TaskContext = None
+        if registered_task.context_param_name is not None:
+            task_context: TaskContext = TaskContext(
+                task_id=task.id,
+                progress=task_progress,
+                logger=logger,
+            )
+
         if task.expires_at is None:
-            return registered_task(task.input, task_progress)
+            return registered_task(task.input, task_context)
 
         timer = self._calculate_timer_and_set_watchdog(task, logger)
         try:
-            return registered_task(task.input, task_progress)
+            return registered_task(task.input, task_context)
         finally:
             timer.cancel()
 
     def _calculate_timer_and_set_watchdog(
-        self, task: Task, logger: logging.Logger
+        self, 
+        task: Task,
+        logger: logging.Logger
     ) -> threading.Timer:
         timeout: float = max(
             0, (task.expires_at - datetime.now(timezone.utc)).total_seconds()
@@ -382,6 +419,3 @@ class LilotaWorker(LilotaNode):
     def _on_stop(self):
         # Stop worker heartbeat thread
         self._stop_node_heartbeat()
-
-    def _should_set_progress_manually(self):
-        return self._set_progress_manually

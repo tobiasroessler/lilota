@@ -16,5 +16,5 @@ worker = LilotaWorker(
   ...
 )
 
-@worker.register("my_task", max_attempts=5)
+@worker.task(max_attempts=5)
 ```

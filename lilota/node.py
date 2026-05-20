@@ -124,7 +124,7 @@ class LilotaNode(ABC):
             # Create stores
             self._node_store = NodeStore(self._db_url, self._logger)
             self._task_store = TaskStore(
-                self._db_url, self._logger, self._should_set_progress_manually()
+                self._db_url, self._logger
             )
 
             # Create node with status IDLE
@@ -230,14 +230,5 @@ class LilotaNode(ABC):
 
         Subclasses should implement this method to start any required
         background threads, heartbeats, or task loops.
-        """
-        pass
-
-    @abstractmethod
-    def _should_set_progress_manually(self) -> bool:
-        """Determine whether task progress should be set manually.
-
-        Returns:
-          bool: True if users must manually update the task progress, otherwise False.
         """
         pass

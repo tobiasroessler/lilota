@@ -10,7 +10,7 @@ worker = LilotaWorker(
 )
 
 
-@worker.register("infinite_loop", timeout=timedelta(seconds=1))
+@worker.task(name="infinite_loop", timeout=timedelta(seconds=1))
 def hello_world():
     while True:
         time.sleep(0.1)

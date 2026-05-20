@@ -68,9 +68,6 @@ class LilotaScheduler(LilotaNode):
         # Stop heartbeat thread
         self._stop_node_heartbeat()
 
-    def _should_set_progress_manually(self):
-        return False
-
     def schedule(self, name: str, input: Any = None) -> int:
         """Create and store a new task.
 

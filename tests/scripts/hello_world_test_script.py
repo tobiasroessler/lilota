@@ -8,7 +8,7 @@ worker = LilotaWorker(
 )
 
 
-@worker.register("hello_world")
+@worker.task
 def hello_world():
     print("Hello Word")
 

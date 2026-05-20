@@ -1,6 +1,6 @@
 from abc import ABC
 import os
-from .models import Node, NodeType, NodeStatus, NodeLeader, Task, TaskStatus, LogEntry
+from .models import Node, NodeType, NodeStatus, NodeLeader, Task, TaskStatus, TaskProgress, LogEntry
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import create_engine, select, update, and_, or_
 from sqlalchemy.orm import sessionmaker
@@ -156,16 +156,14 @@ class TaskStore(StoreBase):
     BATCH_SIZE = 50
 
     def __init__(
-        self, db_url: str, logger: logging.Logger, set_progress_manually: bool = False
+        self, db_url: str, logger: logging.Logger
     ):
         """
         Args:
             db_url (str): Database connection URL.
             logger (logging.Logger): Logger for store operations.
-            set_progress_manually (bool): Whether task progress must be updated manually.
         """
         super().__init__(db_url, logger)
-        self._set_progress_manually = set_progress_manually
 
     def create_task(self, name: str, input: Any = None):
         """Create a new task record in the database.
@@ -439,7 +437,7 @@ class TaskStore(StoreBase):
                 task = self._load_task(session, id)
                 task.progress_percentage = max(0, min(progress, 100))
 
-    def end_task_success(self, id: UUID, output: Any):
+    def end_task_success(self, id: UUID, output: Any, task_progress: TaskProgress):
         """Mark a task as successfully completed.
 
         Args:
@@ -453,9 +451,9 @@ class TaskStore(StoreBase):
             with session.begin():
                 task = self._load_task(session, id)
                 task.output = output
-                self._complete_progress(task, TaskStatus.COMPLETED)
+                self._complete_progress(task, TaskStatus.COMPLETED, task_progress)
 
-    def end_task_failure(self, id: UUID, error: dict):
+    def end_task_failure(self, id: UUID, error: dict, task_progress: TaskProgress):
         """Mark a task as failed.
 
         Args:
@@ -466,7 +464,7 @@ class TaskStore(StoreBase):
             with session.begin():
                 task = self._load_task(session, id)
                 task.error = error
-                self._complete_progress(task, TaskStatus.FAILED)
+                self._complete_progress(task, TaskStatus.FAILED, task_progress)
 
     def delete_task_by_id(self, id: UUID):
         """Delete a task by its UUID.
@@ -482,8 +480,8 @@ class TaskStore(StoreBase):
                 session.delete(task)
         return True
 
-    def _complete_progress(self, task: Task, task_status: TaskStatus):
-        if not self._set_progress_manually:
+    def _complete_progress(self, task: Task, task_status: TaskStatus, task_progress: TaskProgress):
+        if not task_progress.set_progress_manually:
             task.progress_percentage = 100
         task.status = task_status
         task.end_date_time = datetime.now(timezone.utc)

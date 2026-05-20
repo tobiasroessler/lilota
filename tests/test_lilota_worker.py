@@ -477,7 +477,7 @@ class LilotaWorkerTestCase(TestCase):
                 expires_at=datetime(2026, 3, 20, 1, 0, 0),
             )
         )
-        store = TaskStore(LilotaWorkerTestCase.DB_URL, logger, False)
+        store = TaskStore(LilotaWorkerTestCase.DB_URL, logger)
         worker = LilotaWorker(LilotaWorkerTestCase.DB_URL, logging_level=logging.DEBUG)
 
         # Act

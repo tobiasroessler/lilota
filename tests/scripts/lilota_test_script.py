@@ -59,45 +59,37 @@ worker = LilotaWorker(
 )
 
 
-@worker.register("add", input_model=AddInput, output_model=AddOutput)
+@worker.task
 def add(data: AddInput) -> AddOutput:
     return AddOutput(sum=data.a + data.b)
 
 
-@worker.register("add_with_exception", input_model=AddInput, output_model=AddOutput)
+@worker.task
 def add_with_exception(data: AddInput) -> AddOutput:
     raise Exception("Error")
 
 
-@worker.register(
-    "add_with_dataclasses",
-    input_model=AddInputDataclass,
-    output_model=AddOutputDataclass,
-)
+@worker.task
 def add_with_dataclasses(data: AddInputDataclass) -> AddOutputDataclass:
     return AddOutputDataclass(sum=data.a + data.b)
 
 
-@worker.register(
-    "add_with_dict", input_model=dict[str, int], output_model=dict[str, int]
-)
+@worker.task
 def add_with_dict(data: dict[str, int]) -> dict[str, int]:
     return {"sum": data["a"] + data["b"]}
 
 
-@worker.register("only_input_model", input_model=AddInput)
+@worker.task
 def only_input_model(data: AddInput) -> None:
     print("Hello World")
 
 
-@worker.register("only_output_model", output_model=AddOutput)
+@worker.task
 def only_output_model() -> AddOutput:
     return AddOutput(sum=3)
 
 
-@worker.register(
-    "add_with_invalid_model", input_model=AddInputInvalid, output_model=AddOutputInvalid
-)
+@worker.task
 def add_with_invalid_model(data: AddInputInvalid) -> AddOutputInvalid:
     pass
 

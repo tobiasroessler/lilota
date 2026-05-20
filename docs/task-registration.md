@@ -3,7 +3,7 @@
 
 ## Introduction
 
-Before a function can be executed by **LilotaWorker**, it must be **registered as a task**. A task is simply a Python function that is registered using the **@worker.register()** decorator. Once registered, the task can be scheduled using:
+Before a function can be executed by **LilotaWorker**, it must be **registered as a task**. A task is simply a Python function that is registered using the **@worker.task** decorator. Once registered, the task can be scheduled using:
 
 ```python
 lilota.schedule("task-name")
@@ -22,12 +22,12 @@ worker = LilotaWorker(
   db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample"
 )
 
-@worker.register("hello-world")
+@worker.task
 def hello_world():
   print("Hello World")
 ```
 
-The task can then be scheduled using its name. Before a **lilota** instance needs to be created and started:
+By default a task is regsitered using the method name (here "hello_world"). Before a **lilota** instance needs to be created and started:
 
 ``` python
 lilota = Lilota(
@@ -43,6 +43,20 @@ After that the task can be scheduled:
 task_id = lilota.schedule("hello-world")
 ```
 
+A task name can also be specified if needed.
+
+``` python
+@worker.task("mytask")
+def hello_world():
+  print("Hello World")
+```
+
+ When scheduling the task this name is used.
+
+``` python
+task_id = lilota.schedule("mytask")
+```
+
 
 ## Tasks with input and output models
 
@@ -56,6 +70,25 @@ Using models provides several advantages:
 * easier serialization
 
 Currently, **lilota** supports dataclasses, dictionaries, and objects implementing [**ModelProtocol**](https://tobiasroessler.github.io/lilota/lilota-reference/#lilota.models.ModelProtocol).
+
+
+### Define input and output models
+
+* Input and output models are optional
+* You do not have to use **dataclasses** for these models. You can use any
+serializable model, such as **pydantic** models.
+* It is only important that the models are serializable, since they are
+stored in the database.
+* **lilota** uses a **ModelProtocol**. To comply with it, you only need
+to define an **as_dict** method. A full example using pydantic can be found here:
+[3-add-two-numbers-using-pydantic](https://github.com/tobiasroessler/lilota-sample/blob/main/src/3-add-two-numbers-using-pydantic)
+* lilota also supports passing a **TaskContext** instance to the task function.
+It contains a **progress** field (of type **TaskProgress**) that can be used to update progress 
+information in the database. 
+It also contains a **logger** field (of type **logging.Logger**) that can be used to use the logging
+mechanism of Lilota.
+A full example using the **progress** field can be found here:
+[5-setting-task-progress-manually](https://github.com/tobiasroessler/lilota-sample/blob/main/src/5-setting-task-progress-manually)
 
 
 ### Full example with input and output model
@@ -84,7 +117,7 @@ worker = LilotaWorker(
 )
 
 
-@worker.register("add", input_model=AddInput, output_model=AddOutput)
+@worker.task
 def add(data: AddInput) -> AddOutput:
   return AddOutput(sum=data.a + data.b)
 
@@ -125,33 +158,13 @@ add_output = AddOutput(**task.output)
 
 ## Tasks with setting progress manually
 
-Some tasks run for a longer time and should report progress. **LilotaWorker** provides the **TaskProgress** helper for this purpose.
-
-To enable this, the **set_progress_manually** option must be enabled when creating the Lilota instance.
+Some tasks run for a longer time and should report progress. **LilotaWorker** provides the **TaskProgress** helper for this purpose. It is part of the **TaskContext** object.
 
 ``` python
-from lilota.worker import LilotaWorker
-from lilota.models import TaskProgress
-
-worker = LilotaWorker(
-  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample",
-  set_progress_manually=True
-)
-```
-
-Now a task can receive a **TaskProgress** object:
-
-``` python
-@worker.register("do-something", task_progress=TaskProgress)
-def do_something(task_progress: TaskProgress) -> None:
+@worker.task
+def do_something(task_context: TaskContext) -> None:
   for i in range(1, 101):
-    task_progress.set(i)
-```
-
-The task updates its progress by calling:
-
-``` python
-task_progress.set(percentage)
+    task_context.progress.set(i)
 ```
 
 
@@ -159,19 +172,18 @@ task_progress.set(percentage)
 
 ``` python
 from lilota.worker import LilotaWorker
-from lilota.models import Task, TaskProgress
+from lilota.models import Task, TaskContext
 
 
 worker = LilotaWorker(
-  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample",
-  set_progress_manually=True
+  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample"
 )
 
 
-@worker.register("do-something", task_progress=TaskProgress)
-def do_something(task_progress: TaskProgress) -> None:
+@worker.task
+def do_something(task_context: TaskContext) -> None:
   for i in range(1, 101):
-    task_progress.set(i)
+    task_context.progress.set(i)
 
 
 def main():
