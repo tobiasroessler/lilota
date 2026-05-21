@@ -1,6 +1,15 @@
 from abc import ABC
 import os
-from .models import Node, NodeType, NodeStatus, NodeLeader, Task, TaskStatus, TaskProgress, LogEntry
+from .models import (
+    Node,
+    NodeType,
+    NodeStatus,
+    NodeLeader,
+    Task,
+    TaskStatus,
+    TaskProgress,
+    LogEntry,
+)
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import create_engine, select, update, and_, or_
 from sqlalchemy.orm import sessionmaker
@@ -155,9 +164,7 @@ class TaskStore(StoreBase):
 
     BATCH_SIZE = 50
 
-    def __init__(
-        self, db_url: str, logger: logging.Logger
-    ):
+    def __init__(self, db_url: str, logger: logging.Logger):
         """
         Args:
             db_url (str): Database connection URL.
@@ -480,7 +487,9 @@ class TaskStore(StoreBase):
                 session.delete(task)
         return True
 
-    def _complete_progress(self, task: Task, task_status: TaskStatus, task_progress: TaskProgress):
+    def _complete_progress(
+        self, task: Task, task_status: TaskStatus, task_progress: TaskProgress
+    ):
         if not task_progress.set_progress_manually:
             task.progress_percentage = 100
         task.status = task_status

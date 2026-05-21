@@ -9,6 +9,7 @@ from unittest import TestCase, main
 from typing import Any
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from lilota.constants import DEFAULT_TEST_DB_URL
 from lilota.core import Lilota, LilotaMode, ManagedProcess
 from lilota.models import Node, NodeLeader, Task, TaskStatus, LogEntry, NodeType
 from lilota.db.alembic import get_alembic_config
@@ -67,7 +68,7 @@ class AddOutputInvalid:
 
 
 class LilotaTestCase(TestCase):
-    DB_URL = "postgresql+psycopg://postgres:postgres@localhost:5433/lilota_test"
+    DB_URL = DEFAULT_TEST_DB_URL
 
     @classmethod
     def get_session(cls):
@@ -80,7 +81,7 @@ class LilotaTestCase(TestCase):
         super().setUpClass()
 
         # Apply the migrations
-        cfg = get_alembic_config(db_url=LilotaTestCase.DB_URL)
+        cfg = get_alembic_config(db_url=cls.DB_URL)
         try:
             command.upgrade(cfg, "head")
         except Exception as ex:
@@ -179,7 +180,7 @@ class LilotaTestCase(TestCase):
     def test_stop___start_and_directly_stop___should_shutdown_all_processes(self):
         # Arrange
         lilota = Lilota(
-            db_url=LilotaTestCase.DB_URL,
+            db_url=self.DB_URL,
             script_path=str(
                 Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"
             ),
@@ -205,7 +206,7 @@ class LilotaTestCase(TestCase):
     def test_schedule___add_1_hello_world_task___should_execute_task(self):
         # Arrange
         lilota = Lilota(
-            db_url=LilotaTestCase.DB_URL,
+            db_url=self.DB_URL,
             script_path=str(
                 Path(__file__).resolve().parent
                 / "scripts"
@@ -236,7 +237,7 @@ class LilotaTestCase(TestCase):
     def test_schedule___add_1_task_with_only_input_model___should_execute_task(self):
         # Arrange
         lilota = Lilota(
-            db_url=LilotaTestCase.DB_URL,
+            db_url=self.DB_URL,
             script_path=str(
                 Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"
             ),
@@ -265,7 +266,7 @@ class LilotaTestCase(TestCase):
     def test_schedule___add_1_task_with_only_output_model___should_execute_task(self):
         # Arrange
         lilota = Lilota(
-            db_url=LilotaTestCase.DB_URL,
+            db_url=self.DB_URL,
             script_path=str(
                 Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"
             ),
@@ -296,7 +297,7 @@ class LilotaTestCase(TestCase):
     def test_schedule___add_1_task_with_only_taskprogress___should_execute_task(self):
         # Arrange
         lilota = Lilota(
-            db_url=LilotaTestCase.DB_URL,
+            db_url=self.DB_URL,
             script_path=str(
                 Path(__file__).resolve().parent
                 / "scripts"
@@ -325,7 +326,7 @@ class LilotaTestCase(TestCase):
     ):
         # Arrange
         lilota = Lilota(
-            db_url=LilotaTestCase.DB_URL,
+            db_url=self.DB_URL,
             script_path=str(
                 Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"
             ),
@@ -358,7 +359,7 @@ class LilotaTestCase(TestCase):
     ):
         # Arrange
         lilota = Lilota(
-            db_url=LilotaTestCase.DB_URL,
+            db_url=self.DB_URL,
             script_path=str(
                 Path(__file__).resolve().parent
                 / "scripts"
@@ -387,7 +388,7 @@ class LilotaTestCase(TestCase):
     ):
         # Arrange
         lilota = Lilota(
-            db_url=LilotaTestCase.DB_URL,
+            db_url=self.DB_URL,
             script_path=str(
                 Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"
             ),
@@ -418,7 +419,7 @@ class LilotaTestCase(TestCase):
     def test_schedule___add_1_task_using_dict___should_calculate_the_result(self):
         # Arrange
         lilota = Lilota(
-            db_url=LilotaTestCase.DB_URL,
+            db_url=self.DB_URL,
             script_path=str(
                 Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"
             ),
@@ -451,7 +452,7 @@ class LilotaTestCase(TestCase):
     ):
         # Arrange
         lilota = Lilota(
-            db_url=LilotaTestCase.DB_URL,
+            db_url=self.DB_URL,
             script_path=str(
                 Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"
             ),
@@ -477,7 +478,7 @@ class LilotaTestCase(TestCase):
         # Arrange
         ids = []
         lilota = Lilota(
-            db_url=LilotaTestCase.DB_URL,
+            db_url=self.DB_URL,
             script_path=str(
                 Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"
             ),
@@ -519,7 +520,7 @@ class LilotaTestCase(TestCase):
         # Arrange
         ids = []
         lilota = Lilota(
-            db_url=LilotaTestCase.DB_URL,
+            db_url=self.DB_URL,
             script_path=str(
                 Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"
             ),
@@ -562,7 +563,7 @@ class LilotaTestCase(TestCase):
     ):
         # Arrange
         lilota = Lilota(
-            db_url=LilotaTestCase.DB_URL,
+            db_url=self.DB_URL,
             script_path=str(
                 Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"
             ),
@@ -594,14 +595,14 @@ class LilotaTestCase(TestCase):
     ):
         # Arrange
         lilota = Lilota(
-            db_url=LilotaTestCase.DB_URL,
+            db_url=self.DB_URL,
             script_path=str(
                 Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"
             ),
             number_of_workers=2,
             logging_level=logging.DEBUG,
         )
-        log_store: LogStore = LogStore(LilotaTestCase.DB_URL)
+        log_store: LogStore = LogStore(self.DB_URL)
 
         # Act
         try:
@@ -656,7 +657,7 @@ class LilotaTestCase(TestCase):
     def test_timeout___when_having_an_infinite_loop___should_stop_worker(self):
         # Arrange
         lilota = Lilota(
-            db_url=LilotaTestCase.DB_URL,
+            db_url=self.DB_URL,
             script_path=str(
                 Path(__file__).resolve().parent
                 / "scripts"
@@ -665,7 +666,9 @@ class LilotaTestCase(TestCase):
             number_of_workers=1,
             logging_level=logging.DEBUG,
         )
-        log_store: LogStore = LogStore(LilotaTestCase.DB_URL)
+        log_store: LogStore = LogStore(
+            db_url=self.DB_URL,
+        )
         lilota.start()
         process: ManagedProcess = None
         process_id: UUID = None
@@ -706,7 +709,7 @@ class LilotaTestCase(TestCase):
     def test_exception_in_script___when_directly_failing___should_stop_worker(self):
         # Arrange
         lilota = Lilota(
-            db_url=LilotaTestCase.DB_URL,
+            db_url=self.DB_URL,
             script_path=str(
                 Path(__file__).resolve().parent / "scripts" / "exception_test_script.py"
             ),

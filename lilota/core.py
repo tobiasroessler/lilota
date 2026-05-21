@@ -1,5 +1,6 @@
 import atexit
 from enum import Enum
+from lilota.constants import DEFAULT_DB_URL
 from lilota.heartbeat import Heartbeat, HeartbeatTask
 from lilota.models import Node
 from lilota.scheduler import LilotaScheduler
@@ -171,7 +172,7 @@ class Lilota:
     """
 
     @classmethod
-    def scheduler(cls, db_url: str, **kwargs) -> LilotaScheduler:
+    def scheduler(cls, db_url: str = DEFAULT_DB_URL, **kwargs) -> LilotaScheduler:
         """Create a LilotaScheduler instance.
 
         Args:
@@ -191,7 +192,13 @@ class Lilota:
         return lilota._scheduler
 
     @classmethod
-    def workers(cls, db_url: str, script_path: str, number_of_workers: int, **kwargs):
+    def workers(
+        cls,
+        script_path: str,
+        number_of_workers: int,
+        db_url: str = DEFAULT_DB_URL,
+        **kwargs,
+    ):
         """Create a Lilota instance running only worker processes.
 
         Args:
@@ -213,7 +220,7 @@ class Lilota:
 
     def __init__(
         self,
-        db_url: str,
+        db_url: str = DEFAULT_DB_URL,
         *,
         mode: LilotaMode = LilotaMode.ALL,
         script_path: str = None,

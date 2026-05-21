@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from unittest import TestCase, main
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from lilota.constants import DEFAULT_TEST_DB_URL
 from lilota.scheduler import LilotaScheduler
 from lilota.models import (
     Node,
@@ -43,7 +44,7 @@ def hello_world():
 
 
 class LilotaSchedulerTestCase(TestCase):
-    DB_URL = "postgresql+psycopg://postgres:postgres@localhost:5433/lilota_test"
+    DB_URL = DEFAULT_TEST_DB_URL
 
     @classmethod
     def get_session(cls):

@@ -123,9 +123,7 @@ class LilotaNode(ABC):
         if not self._node_id:
             # Create stores
             self._node_store = NodeStore(self._db_url, self._logger)
-            self._task_store = TaskStore(
-                self._db_url, self._logger
-            )
+            self._task_store = TaskStore(self._db_url, self._logger)
 
             # Create node with status IDLE
             self._node_id = self._node_store.create_node(

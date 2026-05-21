@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Type, Optional, Any, get_type_hints
+from lilota.constants import DEFAULT_DB_URL
 from lilota.node import LilotaNode, NodeHeartbeatTask
 from lilota.models import NodeType, Task, TaskProgress, RegisteredTask, TaskContext
 from lilota.logging import create_context_logger
@@ -118,7 +119,7 @@ class LilotaWorker(LilotaNode):
 
     def __init__(
         self,
-        db_url: str,
+        db_url: str = DEFAULT_DB_URL,
         node_heartbeat_interval: float = 5.0,
         node_heartbeat_interval_jitter: float = 0.2,
         node_timeout_sec: int = 20,
@@ -346,20 +347,17 @@ class LilotaWorker(LilotaNode):
 
                         # Run task
                         result = self._execute_task_with_watchdog(
-                            started_task, 
-                            registered_task, 
-                            task_progress,
-                            logger
+                            started_task, registered_task, task_progress, logger
                         )
 
                         # Set status to completed
-                        self._task_store.end_task_success(task_id, result, task_progress)
+                        self._task_store.end_task_success(
+                            task_id, result, task_progress
+                        )
                     except Exception as ex:
                         self._logger.exception(f"Task execution failed (id: {task_id})")
                         self._task_store.end_task_failure(
-                            task_id, 
-                            exception_to_dict(ex),
-                            task_progress
+                            task_id, exception_to_dict(ex), task_progress
                         )
                         raise
             else:
@@ -395,9 +393,7 @@ class LilotaWorker(LilotaNode):
             timer.cancel()
 
     def _calculate_timer_and_set_watchdog(
-        self, 
-        task: Task,
-        logger: logging.Logger
+        self, task: Task, logger: logging.Logger
     ) -> threading.Timer:
         timeout: float = max(
             0, (task.expires_at - datetime.now(timezone.utc)).total_seconds()

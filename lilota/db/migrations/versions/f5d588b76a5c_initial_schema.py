@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: b4186f417ece
+Revision ID: f5d588b76a5c
 Revises:
-Create Date: 2026-04-09 22:27:43.370238
+Create Date: 2026-05-20 23:28:11.936079
 
 """
 
@@ -10,10 +10,11 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+import lilota.models
 
 
 # revision identifiers, used by Alembic.
-revision: str = "b4186f417ece"
+revision: str = "f5d588b76a5c"
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -25,7 +26,7 @@ def upgrade() -> None:
     op.create_table(
         "lilota_log",
         sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("created_at", lilota.models.UtcDateTime(), nullable=False),
         sa.Column("level", sa.String(length=20), nullable=False),
         sa.Column("logger", sa.String(length=255), nullable=False),
         sa.Column("message", sa.Text(), nullable=False),
@@ -41,14 +42,14 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=255), nullable=True),
         sa.Column("type", sa.String(length=32), nullable=False),
         sa.Column("status", sa.String(length=32), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("created_at", lilota.models.UtcDateTime(), nullable=False),
+        sa.Column("last_seen_at", lilota.models.UtcDateTime(), nullable=False),
         sa.CheckConstraint(
             "status IN ('idle', 'starting', 'running', 'stopping', 'stopped', 'crashed', 'dead')",
-            name="lilota_note_status_check",
+            name="lilota_node_status_check",
         ),
         sa.CheckConstraint(
-            "type IN ('scheduler', 'worker')", name="lilota_note_type_check"
+            "type IN ('scheduler', 'worker')", name="lilota_node_type_check"
         ),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -56,7 +57,7 @@ def upgrade() -> None:
         "lilota_node_leader",
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("node_id", sa.Uuid(), nullable=False),
-        sa.Column("lease_expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("lease_expires_at", lilota.models.UtcDateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_table(
@@ -65,21 +66,21 @@ def upgrade() -> None:
         sa.Column("name", sa.String(), nullable=False),
         sa.Column("pid", sa.Integer(), nullable=False),
         sa.Column("status", sa.String(length=32), nullable=False),
-        sa.Column("run_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("run_at", lilota.models.UtcDateTime(), nullable=False),
         sa.Column("attempts", sa.Integer(), nullable=False),
         sa.Column("max_attempts", sa.Integer(), nullable=False),
-        sa.Column("retried_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("retried_at", lilota.models.UtcDateTime(), nullable=True),
         sa.Column("previous_task_id", sa.Uuid(), nullable=True),
         sa.Column("timeout", sa.Integer(), nullable=True),
-        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("expires_at", lilota.models.UtcDateTime(), nullable=True),
         sa.Column("progress_percentage", sa.Integer(), nullable=False),
-        sa.Column("start_date_time", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("end_date_time", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("start_date_time", lilota.models.UtcDateTime(), nullable=True),
+        sa.Column("end_date_time", lilota.models.UtcDateTime(), nullable=True),
         sa.Column("input", sa.JSON(), nullable=True),
         sa.Column("output", sa.JSON(), nullable=True),
         sa.Column("error", sa.JSON(), nullable=True),
         sa.Column("locked_by", sa.Uuid(), nullable=True),
-        sa.Column("locked_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("locked_at", lilota.models.UtcDateTime(), nullable=True),
         sa.Column("version", sa.Integer(), nullable=False),
         sa.CheckConstraint(
             "status IN ('created', 'scheduled', 'running', 'completed', 'failed', 'expired', 'cancelled')",

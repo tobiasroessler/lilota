@@ -1,6 +1,7 @@
 from typing import Any, Callable, Type, TypeVar, Optional, Protocol, runtime_checkable
 from sqlalchemy import Integer, String, Text, DateTime, JSON, CheckConstraint, Index
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column
+from sqlalchemy.types import TypeDecorator
 from datetime import datetime, timezone, timedelta
 from dataclasses import is_dataclass, asdict
 from enum import StrEnum
@@ -229,6 +230,21 @@ class RegisteredTask:
         return output
 
 
+class UtcDateTime(TypeDecorator):
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            return value.astimezone(timezone.utc)
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None and value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+
+
 class Node(Base):
     """Database model representing a Lilota node.
 
@@ -242,23 +258,23 @@ class Node(Base):
     type: Mapped[str] = mapped_column(String(32), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
     last_seen_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 
     __table_args__ = (
         CheckConstraint(
-            "type IN ('scheduler', 'worker')", name="lilota_note_type_check"
+            "type IN ('scheduler', 'worker')", name="lilota_node_type_check"
         ),
         CheckConstraint(
             "status IN ('idle', 'starting', 'running', 'stopping', 'stopped', 'crashed', 'dead')",
-            name="lilota_note_status_check",
+            name="lilota_node_status_check",
         ),
     )
 
@@ -277,33 +293,33 @@ class Task(Base):
     pid: Mapped[int] = mapped_column(nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=False)
     run_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
     attempts: Mapped[int] = mapped_column(nullable=False, default=0)
     max_attempts: Mapped[int] = mapped_column(nullable=False, default=1)
     retried_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, default=None, index=True
+        UtcDateTime(), nullable=True, default=None, index=True
     )
     previous_task_id: Mapped[UUID] = mapped_column(nullable=True, default=None)
     timeout: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, default=None
+        UtcDateTime(), nullable=True, default=None
     )
     progress_percentage: Mapped[int] = mapped_column(default=0)
     start_date_time: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, default=None
+        UtcDateTime(), nullable=True, default=None
     )
     end_date_time: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, default=None
+        UtcDateTime(), nullable=True, default=None
     )
     input: Mapped[Any | None] = mapped_column(JSON)
     output: Mapped[Any | None] = mapped_column(JSON)
     error: Mapped[Any | None] = mapped_column(JSON)
     locked_by: Mapped[UUID | None] = mapped_column(default=None)
     locked_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, default=None
+        UtcDateTime(), nullable=True, default=None
     )
     version: Mapped[int] = mapped_column(default=0, nullable=False)
 
@@ -326,7 +342,7 @@ class LogEntry(Base):
     __tablename__ = "lilota_log"
     id: Mapped[int] = mapped_column(primary_key=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         nullable=False,
     )
     level: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -348,6 +364,4 @@ class NodeLeader(Base):
     __tablename__ = "lilota_node_leader"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
     node_id: Mapped[UUID] = mapped_column(nullable=False)
-    lease_expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    lease_expires_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False)

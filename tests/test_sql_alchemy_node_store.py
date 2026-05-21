@@ -9,13 +9,14 @@ from uuid import uuid4
 from unittest import TestCase, main
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from lilota.constants import DEFAULT_TEST_DB_URL
 from lilota.models import Node, NodeStatus, NodeType
 from lilota.db.alembic import get_alembic_config
 from lilota.stores import NodeStore
 
 
 class SqlAlchemyNodeStoreTestCase(TestCase):
-    DB_URL = "postgresql+psycopg://postgres:postgres@localhost:5433/lilota_test"
+    DB_URL = DEFAULT_TEST_DB_URL
 
     @classmethod
     def get_session(cls):
@@ -182,6 +183,8 @@ class SqlAlchemyNodeStoreTestCase(TestCase):
         # Assert
         node = store.get_node_by_id(node_id)
         self.assertIsNotNone(node.last_seen_at)
+        print(node.last_seen_at)
+        print(node.last_seen_at.tzinfo)
         self.assertLess(
             datetime.now(timezone.utc) - node.last_seen_at, timedelta(seconds=5)
         )

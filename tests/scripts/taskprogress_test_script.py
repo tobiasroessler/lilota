@@ -1,3 +1,4 @@
+from lilota.constants import DEFAULT_TEST_DB_URL
 from lilota.models import TaskContext
 from lilota.worker import LilotaWorker
 from typing import Any
@@ -16,9 +17,9 @@ class AddInput:
 
 
 worker = LilotaWorker(
-    db_url="postgresql+psycopg://postgres:postgres@localhost:5433/lilota_test",
+    db_url=DEFAULT_TEST_DB_URL,
     node_heartbeat_interval_jitter=None,
-    max_task_heartbeat_interval=0.1
+    max_task_heartbeat_interval=0.1,
 )
 
 

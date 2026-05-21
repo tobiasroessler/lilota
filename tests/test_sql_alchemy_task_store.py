@@ -9,13 +9,14 @@ from uuid import uuid4
 from unittest import TestCase, main
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from lilota.constants import DEFAULT_TEST_DB_URL
 from lilota.models import Task, TaskStatus
 from lilota.db.alembic import get_alembic_config
 from lilota.stores import TaskStore
 
 
 class SqlAlchemyTaskStoreTestCase(TestCase):
-    DB_URL = "postgresql+psycopg://postgres:postgres@localhost:5433/lilota_test"
+    DB_URL = DEFAULT_TEST_DB_URL
 
     @classmethod
     def get_session(cls):
