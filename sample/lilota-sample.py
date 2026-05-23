@@ -20,7 +20,6 @@ class AddOutput:
 
 
 lilota = Lilota(
-    db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample",
     script_path="sample/myscript.py",
     number_of_workers=1,
 )

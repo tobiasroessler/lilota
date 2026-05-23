@@ -1,9 +1,8 @@
 # Database
 
-**lilota** executes tasks in a managed way. All information processed by **lilota** is stored in various database tables in order to make it transparent to the user what is happening in the system.
+**lilota** executes tasks in a managed way. All information processed by **lilota** are stored in various database tables in order to make it transparent to the user what is happening in the system.
 
-In our examples we often use a url to a **postgres** database. **lilota** uses **SQLAlchemy** and therefore all
-databases that are supported by SQLAlchemy can be used here.
+If you do not specify a connection string in the **db_url** then **lilota** uses **sqlite:///lilota.db** and stores the data in a SQLite database. **lilota** uses **SQLAlchemy** and therefore all databases that are supported by SQLAlchemy can be used here.
 
 
 ## Tables

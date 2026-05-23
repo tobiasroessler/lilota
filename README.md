@@ -82,9 +82,7 @@ class AddOutput():
   sum: int
 
 
-worker = LilotaWorker(
-  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample"
-)
+worker = LilotaWorker()
 
 
 @worker.task
@@ -129,7 +127,6 @@ class AddOutput():
 
 
 lilota = Lilota(
-  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample",
   script_path="sample/myscript.py",
   number_of_workers=8
 )
@@ -162,7 +159,6 @@ if __name__ == "__main__":
 
 ``` python
 lilota = Lilota(
-  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample",
   script_path="sample/myscript.py",
   number_of_workers=8
 )
@@ -171,16 +167,13 @@ lilota = Lilota(
 Additionally it is possible to create a **Lilota scheduler** using a class method:
 
 ``` python
-scheduler: LilotaScheduler = Lilota.scheduler(
-  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample"
-)
+scheduler: LilotaScheduler = Lilota.scheduler()
 ```
 
 If you need a separate application that runs workers but does not require a scheduler, you can create it like this:
 
 ``` python
 workers = Lilota.workers(
-  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample",
   script_path=str(Path(__file__).resolve().parent / "workerscript.py"),
   number_of_workers=1
 )

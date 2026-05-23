@@ -354,7 +354,7 @@ class LilotaTestCase(TestCase):
         finally:
             lilota.stop()
 
-    def test_schedule___with_taskprogress_object_passed___should_have_registered_task(
+    def test_schedule___with_taskprogress_object_passed___should_set_progress_correctly(
         self,
     ):
         # Arrange
@@ -380,6 +380,35 @@ class LilotaTestCase(TestCase):
             self.sleep()
             task: Task = lilota.get_task_by_id(id)
             self.assertEqual(task.progress_percentage, 50)
+        finally:
+            lilota.stop()
+
+    def test_schedule___with_logger_object_passed___should_log_correctly(
+        self,
+    ):
+        # Arrange
+        log_store: LogStore = LogStore(self.DB_URL)
+        lilota = Lilota(
+            db_url=self.DB_URL,
+            script_path=str(
+                Path(__file__).resolve().parent / "scripts" / "logger_test_script.py"
+            ),
+            number_of_workers=1,
+        )
+        lilota.start()
+
+        # Act
+        try:
+            id = lilota.schedule("only_logger")
+        except Exception:
+            lilota.stop()
+
+        # Assert
+        try:
+            self.sleep(2)
+            log_entries: list[LogEntry] = log_store.get_log_entries()
+            self.assertEqual(len(log_entries), 1)
+            self.assertEqual("Message from only_logger task", log_entries[0].message)
         finally:
             lilota.stop()
 

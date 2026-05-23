@@ -28,6 +28,8 @@ Workers can run:
 
 ## Communication between nodes
 
-All nodes communicate through the shared database.
+All nodes communicate through the shared database. If you do not specify a connection string, **lilota** will use **sqlite:///lilota.db** by default. This creates a SQLite database.
+
+For production-ready applications, we recommend using a more advanced database that handles multiple processes efficiently. We recommend PostgreSQL. However, since **lilota** uses SQLAlchemy to access the database, any database supported by SQLAlchemy can be used.
 
 For many applications this setup is sufficient. However, some scenarios require horizontal scaling. In these cases, multiple **Lilota** instances can run across several servers. They still connect then to the same database.

@@ -5,6 +5,7 @@ from sqlalchemy.types import TypeDecorator
 from datetime import datetime, timezone, timedelta
 from dataclasses import is_dataclass, asdict
 from enum import StrEnum
+import logging
 from uuid import UUID, uuid4
 
 
@@ -98,8 +99,8 @@ class TaskContext:
         self,
         *,
         task_id=None,
-        progress=None,
-        logger=None,
+        progress: TaskProgress = None,
+        logger: logging.Logger = None,
     ):
         """Initialize a task execution context.
 

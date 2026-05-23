@@ -527,6 +527,11 @@ class LogStore:
         self._ensure_engine()
         return self._Session()
 
+    def get_log_entries(self) -> list[LogEntry]:
+        """Return all log entries."""
+        with self.get_session() as session:
+            return session.query(LogEntry).order_by(LogEntry.created_at).all()
+
     def get_log_entries_by_node_id(self, node_id: UUID) -> list[LogEntry]:
         """Return all log entries associated with a given node."""
         with self.get_session() as session:

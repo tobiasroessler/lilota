@@ -18,9 +18,7 @@ The simplest task does not require input or output.
 ``` python
 from lilota.worker import LilotaWorker
 
-worker = LilotaWorker(
-  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample"
-)
+worker = LilotaWorker()
 
 @worker.task
 def hello_world():
@@ -31,7 +29,6 @@ By default a task is regsitered using the method name (here "hello_world"). Befo
 
 ``` python
 lilota = Lilota(
-  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample",
   script_path="sample/myscript.py"
 )
 lilota.start()
@@ -112,9 +109,7 @@ class AddOutput:
   sum: int
 
 
-worker = LilotaWorker(
-  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample"
-)
+worker = LilotaWorker()
 
 
 @worker.task
@@ -175,9 +170,7 @@ from lilota.worker import LilotaWorker
 from lilota.models import Task, TaskContext
 
 
-worker = LilotaWorker(
-  db_url="postgresql+psycopg://postgres:postgres@localhost:5432/lilota_sample"
-)
+worker = LilotaWorker()
 
 
 @worker.task
@@ -192,4 +185,15 @@ def main():
 
 if __name__ == "__main__":
   main()
+```
+
+
+## Tasks that use the lilota logger
+
+It is possible to use the internal logging system from **lilota**. Via the **TaskContext** it can be injected to the task.
+
+``` python
+@worker.task
+def only_logger(task_context: TaskContext) -> None:
+  task_context.logger.info("Message from only_logger task")
 ```
