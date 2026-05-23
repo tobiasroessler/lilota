@@ -399,7 +399,7 @@ class LilotaTestCase(TestCase):
 
         # Act
         try:
-            id = lilota.schedule("only_logger")
+            lilota.schedule("only_logger")
         except Exception:
             lilota.stop()
 
