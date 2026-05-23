@@ -19,7 +19,7 @@ worker = LilotaWorker(
   ...
 )
 
-@worker.register("my_task", timeout=timedelta(minutes=5))
+@worker.task("my_task", timeout=timedelta(minutes=5))
 ```
 
 The default timeout is **5 minutes**. This can be adjusted using Python’s **timedelta** object.
