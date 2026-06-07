@@ -15,10 +15,6 @@ setup and overhead.
   - [Quick example](#quick-example)
     - [myscript.py](#myscriptpy)
     - [Integration of lilota](#integration-of-lilota)
-      - [Create a Lilota instance](#create-a-lilota-instance)
-      - [Start lilota](#start-lilota)
-      - [Schedule a task](#schedule-a-task)
-      - [Retrieve task information including the output (if available)](#retrieve-task-information-including-the-output-if-available)
   - [Documentation](#documentation)
   - [Examples](#examples)
 
@@ -152,61 +148,6 @@ def main():
 
 if __name__ == "__main__":
   main()
-```
-
-
-#### Create a Lilota instance
-
-``` python
-lilota = Lilota(
-  script_path="sample/myscript.py",
-  number_of_workers=8
-)
-```
-
-Additionally it is possible to create a **Lilota scheduler** using a class method:
-
-``` python
-scheduler: LilotaScheduler = Lilota.scheduler()
-```
-
-If you need a separate application that runs workers but does not require a scheduler, you can create it like this:
-
-``` python
-workers = Lilota.workers(
-  script_path=str(Path(__file__).resolve().parent / "workerscript.py"),
-  number_of_workers=1
-)
-```
-
-A full example using the class methods can be found here:
-[7-using-factory-methods](https://github.com/tobiasroessler/lilota-sample/blob/main/src/7-using-factory-methods)
-
-
-
-#### Start lilota
-
-``` python
-lilota.start()
-```
-
-
-#### Schedule a task
-
-``` python
-task_id = lilota.schedule("add", AddInput(a=2, b=3))
-```
-
-The **schedule** function creates a task entry in the database and starts
-executing it immediately. The ID of the stored task is returned.
-
-
-#### Retrieve task information including the output (if available)
-
-``` python
-task: Task = lilota.get_task_by_id(task_id)
-add_output = AddOutput(**task.output)
-print(add_output.sum)
 ```
 
 
