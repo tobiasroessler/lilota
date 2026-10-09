@@ -24,6 +24,16 @@ alembic init lilota/db/migrations
 from lilota.models import Base
 target_metadata = Base.metadata
 
+### Keep lilota's version table and table filter in migrations/env.py
+Both context.configure(...) calls need:
+
+    version_table=VERSION_TABLE,        # from lilota.constants
+    include_object=include_object,      # from lilota.db.alembic
+
+Without version_table, lilota writes its revision into "alembic_version" and clashes with
+an application that shares the database. Without include_object, autogenerate against
+such a database drops the application's tables. All lilota tables start with "lilota_".
+
 ### Create migrations
 alembic revision --autogenerate -m "initial schema"
 

@@ -2,7 +2,6 @@ import sys
 import os
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from alembic import command
 from dataclasses import dataclass
 from unittest import TestCase, main
 from sqlalchemy import create_engine
@@ -18,7 +17,7 @@ from lilota.models import (
     TaskStatus,
     LogEntry,
 )
-from lilota.db.alembic import get_alembic_config
+from lilota.db.alembic import upgrade_db
 from lilota.stores import TaskStore, LogStore
 import logging
 import time
@@ -61,11 +60,7 @@ class LilotaWorkerTestCase(TestCase):
         super().setUpClass()
 
         # Apply the migrations
-        cfg = get_alembic_config(db_url=LilotaWorkerTestCase.DB_URL)
-        try:
-            command.upgrade(cfg, "head")
-        except Exception as ex:
-            raise Exception(f"Could not update the database: {str(ex)}")
+        upgrade_db(LilotaWorkerTestCase.DB_URL)
 
     def setUp(self):
         # Create SqlAlchemy engine and session

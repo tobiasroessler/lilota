@@ -2,7 +2,6 @@ import sys
 import os
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from alembic import command
 from datetime import datetime, timezone, timedelta
 import logging
 from uuid import uuid4
@@ -11,7 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from lilota.constants import DEFAULT_TEST_DB_URL
 from lilota.models import Node, NodeStatus, NodeType
-from lilota.db.alembic import get_alembic_config
+from lilota.db.alembic import upgrade_db
 from lilota.stores import NodeStore
 
 
@@ -28,11 +27,7 @@ class SqlAlchemyNodeStoreTestCase(TestCase):
     def setUpClass(cls):
         super().setUpClass()
 
-        cfg = get_alembic_config(db_url=cls.DB_URL)
-        try:
-            command.upgrade(cfg, "head")
-        except Exception as ex:
-            raise Exception(f"Could not update the database: {str(ex)}")
+        upgrade_db(cls.DB_URL)
 
     def setUp(self):
         self.delete_all_nodes()

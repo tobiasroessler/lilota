@@ -1,4 +1,6 @@
 from logging.config import fileConfig
+from lilota.constants import VERSION_TABLE
+from lilota.db.alembic import include_object
 from lilota.models import Base
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -43,6 +45,8 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=include_object,
+        version_table=VERSION_TABLE,
     )
 
     with context.begin_transaction():
@@ -63,7 +67,12 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            include_object=include_object,
+            version_table=VERSION_TABLE,
+        )
 
         with context.begin_transaction():
             context.run_migrations()
