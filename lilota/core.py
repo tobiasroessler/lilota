@@ -16,7 +16,8 @@ import os
 import sys
 import subprocess
 import signal
-from typing import Any, List
+import traceback
+from typing import Any, Callable, List
 from uuid import UUID, uuid4
 import threading
 
@@ -359,6 +360,7 @@ class Lilota:
         process_manager_interval: float = 1.0,
         stop_worker_timeout: int = 60,
         logging_level=logging.INFO,
+        on_fatal_error: Callable[[str], None] = None,
     ):
         """Create a new Lilota runtime instance.
 
@@ -395,6 +397,12 @@ class Lilota:
 
           logging_level (int, optional):
             Logging level used by the scheduler. Defaults to logging.INFO.
+
+          on_fatal_error (Callable[[str], None], optional):
+            Function that is called when a fatal error has stopped all
+            workers. It gets the error, which is also what ``error``
+            returns. It is called in the thread that monitors the workers,
+            so it should return quickly, and it must not call ``stop()``.
         """
         if mode in (LilotaMode.WORKERS, LilotaMode.ALL):
             if number_of_workers <= 0:
@@ -415,6 +423,7 @@ class Lilota:
         self._stop_worker_timeout = stop_worker_timeout
         self._process_manager_heartbeat: Heartbeat = None
         self._process_manager = ProcessManager(on_fatal_error=self._handle_fatal_error)
+        self._on_fatal_error = on_fatal_error
         self._error = None
         self._error_event = threading.Event()
         atexit.register(self._process_manager.stop_all)
@@ -434,6 +443,8 @@ class Lilota:
     @property
     def error(self):
         """Return the last fatal error encountered by the system.
+
+        The error is reset when ``start()`` starts the workers again.
 
         Returns:
           Any: The error object or message captured from a worker process,
@@ -465,6 +476,18 @@ class Lilota:
         self._error = error
         self._error_event.set()
 
+        if self._on_fatal_error:
+            try:
+                self._on_fatal_error(error)
+            except Exception:
+                # The function belongs to the application. An error in it must not
+                # end the thread that monitors the workers.
+                traceback.print_exc()
+
+    def _reset_error(self):
+        self._error = None
+        self._error_event.clear()
+
     def start(self):
         """Start the configured Lilota components.
 
@@ -474,9 +497,19 @@ class Lilota:
           - Starts process monitoring for workers (WORKER, ALL)
 
         After startup, the instance is ready to schedule and/or execute tasks.
+
+        After a fatal error the method starts the workers again. ``stop()`` does
+        not have to be called first. The fatal error is reset: ``has_failed()``
+        returns False and ``error`` returns None, until the next fatal error.
         """
         if self._is_started:
+            # A fatal error has stopped the workers. Everything else is still running.
+            if self.has_failed():
+                self._reset_error()
+                self._start_workers()
             return
+
+        self._reset_error()
 
         if self._mode in (LilotaMode.SCHEDULER, LilotaMode.ALL):
             self._start_scheduler()
@@ -554,7 +587,16 @@ class Lilota:
         Returns:
           int: Identifier of the scheduled task.
         """
-        return self._scheduler.schedule(name, input)
+        id = self._scheduler.schedule(name, input)
+
+        if self.has_failed():
+            self._scheduler._logger.warning(
+                f"The task '{name}' ({id}) was scheduled, but no worker can execute "
+                "it: a fatal error has stopped all workers. Call start() to start "
+                "them again"
+            )
+
+        return id
 
     def get_all_nodes(self) -> list[Node]:
         """Retrieve all registered scheduler nodes.

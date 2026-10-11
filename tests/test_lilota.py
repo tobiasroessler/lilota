@@ -13,6 +13,7 @@ import signal
 import subprocess
 import tempfile
 from unittest import TestCase, main
+from unittest.mock import patch
 from typing import Any
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -781,6 +782,193 @@ class LilotaTestCase(TestCase):
             self.assertEqual(len(lilota._process_manager._processes), 0)
         finally:
             lilota.stop()
+
+    def test_start___after_fatal_error___should_reset_error(self):
+        # Arrange: a worker script that fails, which is a fatal error
+        with self.worker_script_that_fails() as repair_worker_script:
+            lilota = Lilota(
+                db_url=self.DB_URL,
+                script_path=str(
+                    Path(__file__).resolve().parent
+                    / "scripts"
+                    / "fatal_error_test_script.py"
+                ),
+                number_of_workers=1,
+                process_manager_interval=0.1,
+            )
+            lilota.start()
+
+            try:
+                has_failed = lilota.wait_for_failure(timeout=10)
+
+                # Act: the worker script is repaired and lilota is started again
+                repair_worker_script()
+                lilota.stop()
+                lilota.start()
+                task_id = lilota.schedule("hello_world")
+                task = self.wait_for_task(lilota, task_id, [TaskStatus.COMPLETED])
+                has_failed_after_restart = lilota.has_failed()
+                error_after_restart = lilota.error
+            finally:
+                lilota.stop()
+
+        # Assert
+        self.assertTrue(has_failed)
+        self.assertEqual(task.status, TaskStatus.COMPLETED)
+        self.assertFalse(
+            has_failed_after_restart,
+            "The workers are running again. start() must reset the fatal error of the "
+            "time before",
+        )
+        self.assertIsNone(error_after_restart)
+
+    def test_start___after_fatal_error_without_stop___should_start_workers_again(
+        self,
+    ):
+        # Arrange: a worker script that fails, which is a fatal error
+        with self.worker_script_that_fails() as repair_worker_script:
+            lilota = Lilota(
+                db_url=self.DB_URL,
+                script_path=str(
+                    Path(__file__).resolve().parent
+                    / "scripts"
+                    / "fatal_error_test_script.py"
+                ),
+                number_of_workers=2,
+                process_manager_interval=0.1,
+            )
+            lilota.start()
+
+            try:
+                has_failed = lilota.wait_for_failure(timeout=10)
+                workers_after_error = len(lilota._process_manager._processes)
+
+                # Act: the worker script is repaired, and start() is called without
+                # stop() before it
+                repair_worker_script()
+                lilota.start()
+                task_id = lilota.schedule("hello_world")
+                task = self.wait_for_task(lilota, task_id, [TaskStatus.COMPLETED])
+                has_failed_after_restart = lilota.has_failed()
+                error_after_restart = lilota.error
+                workers_after_restart = len(lilota._process_manager._processes)
+            finally:
+                lilota.stop()
+
+        # Assert
+        self.assertTrue(has_failed)
+        self.assertEqual(workers_after_error, 0)
+        self.assertEqual(task.status, TaskStatus.COMPLETED)
+        self.assertFalse(has_failed_after_restart)
+        self.assertIsNone(error_after_restart)
+        self.assertEqual(workers_after_restart, 2)
+
+    def test_start___when_on_fatal_error_raises___should_start_workers_again(self):
+        # Arrange: an application whose function for fatal errors has an error itself
+        def on_fatal_error(error: str):
+            raise Exception("Error in on_fatal_error")
+
+        with self.worker_script_that_fails() as repair_worker_script:
+            lilota = Lilota(
+                db_url=self.DB_URL,
+                script_path=str(
+                    Path(__file__).resolve().parent
+                    / "scripts"
+                    / "fatal_error_test_script.py"
+                ),
+                number_of_workers=1,
+                process_manager_interval=0.1,
+                on_fatal_error=on_fatal_error,
+            )
+            lilota.start()
+
+            try:
+                has_failed = lilota.wait_for_failure(timeout=10)
+                error = lilota.error
+
+                # Act
+                repair_worker_script()
+                lilota.start()
+                task_id = lilota.schedule("hello_world")
+                task = self.wait_for_task(lilota, task_id, [TaskStatus.COMPLETED])
+                is_monitoring = lilota._process_manager_heartbeat.is_alive()
+            finally:
+                lilota.stop()
+
+        # Assert
+        self.assertTrue(has_failed)
+        self.assertIn("Exception: Error in script", error)
+        self.assertEqual(task.status, TaskStatus.COMPLETED)
+        self.assertTrue(is_monitoring)
+
+    def test_schedule___after_fatal_error___should_log_warning(self):
+        # Arrange: a fatal error, after which no worker is left
+        with self.worker_script_that_fails():
+            lilota = Lilota(
+                db_url=self.DB_URL,
+                script_path=str(
+                    Path(__file__).resolve().parent
+                    / "scripts"
+                    / "fatal_error_test_script.py"
+                ),
+                number_of_workers=1,
+                process_manager_interval=0.1,
+            )
+            lilota.start()
+
+            try:
+                has_failed = lilota.wait_for_failure(timeout=10)
+
+                # Act
+                lilota.schedule("hello_world")
+            finally:
+                lilota.stop()
+
+        warnings = [
+            entry.message
+            for entry in LogStore(self.DB_URL).get_log_entries()
+            if entry.level == "WARNING"
+        ]
+
+        # Assert
+        self.assertTrue(has_failed)
+        self.assertEqual(
+            len(warnings),
+            1,
+            "schedule() must log a warning when no worker can execute the task "
+            "because of a fatal error",
+        )
+
+    def test_start___when_worker_script_fails___should_call_on_fatal_error(self):
+        # Arrange: an application that wants to be told about a fatal error
+        errors = []
+
+        with self.worker_script_that_fails():
+            lilota = Lilota(
+                db_url=self.DB_URL,
+                script_path=str(
+                    Path(__file__).resolve().parent
+                    / "scripts"
+                    / "fatal_error_test_script.py"
+                ),
+                number_of_workers=1,
+                process_manager_interval=0.1,
+                on_fatal_error=errors.append,
+            )
+
+            # Act
+            lilota.start()
+
+            try:
+                has_failed = lilota.wait_for_failure(timeout=10)
+                error = lilota.error
+            finally:
+                lilota.stop()
+
+        # Assert: called once, with the error that the error property returns
+        self.assertTrue(has_failed)
+        self.assertEqual(errors, [error])
+        self.assertIn("Exception: Error in script", errors[0])
 
     def test_worker_not_started___when_script_does_not_start_worker___should_stop_worker(
         self,
@@ -1617,6 +1805,23 @@ class LilotaTestCase(TestCase):
             session.add(node)
             session.commit()
             return node.id
+
+    @contextmanager
+    def worker_script_that_fails(self):
+        """Let the worker script "fatal_error_test_script.py" fail, and yield a function that repairs it.
+
+        The script fails for as long as a file exists. Workers have to be started
+        inside the block. The traceback they write to stderr is not shown.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            failure_file = Path(directory) / "failure"
+            failure_file.touch()
+
+            with (
+                patch.dict(os.environ, {"LILOTA_TEST_FAILURE_FILE": str(failure_file)}),
+                redirect_stderr(io.StringIO()),
+            ):
+                yield failure_file.unlink
 
     def wait_for_completed_task(self, name: str, timeout: float = 15) -> Task | None:
         """Wait until a task with the name is completed and return it, or None after the timeout.

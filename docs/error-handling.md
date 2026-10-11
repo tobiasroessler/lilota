@@ -11,6 +11,45 @@ The Lilota class also provides two methods to:
 Check whether a fatal error has occurred (**has_failed**)
 Wait until a fatal error occurs (**wait_for_failure**), which blocks execution
 
+## After a fatal error
+
+A fatal error stops all workers. No task is executed anymore until the workers are started again.
+
+### Being told about a fatal error
+
+Your application does not have to ask **has_failed** again and again. Pass a function as **on_fatal_error**, and **lilota** calls it when a fatal error has happened:
+
+``` python
+def on_fatal_error(error: str):
+  print(f"lilota has stopped all workers: {error}")
+
+
+lilota = Lilota(
+  script_path="myscript.py",
+  on_fatal_error=on_fatal_error
+)
+```
+
+The function gets the error that the **error** property returns. It is called in a thread of **lilota**, so it should return quickly, and it must not call **stop**.
+
+### Scheduling a task
+
+**schedule** still stores a task after a fatal error, so that the task is not lost. It is executed as soon as workers are running again. Because that can take long, **schedule** writes a warning to the **lilota_log** table:
+
+```
+The task 'add' (0d3c...) was scheduled, but no worker can execute it: a fatal error has stopped all workers. Call start() to start them again
+```
+
+### Starting the workers again
+
+When the cause of the error is gone, call **start**. You do not have to call **stop** first:
+
+``` python
+lilota.start()
+```
+
+**start** starts the workers again and resets the fatal error: **has_failed** returns **False** and **error** returns **None**, until the next fatal error.
+
 ## A task raises an exception
 
 This is an error the worker handles. It is not a fatal error.
