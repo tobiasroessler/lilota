@@ -47,6 +47,41 @@ context.configure(
 Up to 1.1.1, **lilota** recorded its revision in **alembic_version**. Nothing has to be done by hand: on the first start after the upgrade, **lilota** moves its revision from **alembic_version** to **lilota_alembic_version**. It drops **alembic_version** if nothing else is left in it. Revisions that are not **lilota**'s are left where they are, so a revision of your application's in the same table is untouched.
 
 
+## Cleaning up
+
+**lilota** deletes nothing by itself. Every task, every retry, every log entry and every node stays in the database, and the row of a task keeps its **input**, **output** and **error**.
+
+To delete what is old, call **cleanup** from time to time, for example once a day:
+
+``` python
+from datetime import timedelta
+
+deleted = lilota.cleanup(older_than=timedelta(days=30))
+print(deleted)  # {'tasks': 1250, 'log_entries': 310, 'nodes': 12}
+```
+
+**cleanup** deletes the rows that are older than the given age:
+
+| Table           | Deleted                                                                    | The age is counted from                |
+| --------------- | -------------------------------------------------------------------------- | -------------------------------------- |
+| **lilota_task** | tasks with the status **completed**, **failed**, **expired** or **cancelled** | the time the task ended or expired     |
+| **lilota_log**  | all entries                                                                | the time the entry was written         |
+| **lilota_node** | nodes with the status **dead**                                             | the time the node was last seen        |
+
+It never deletes
+
+* a task that is waiting or being executed
+* a failed or expired task that still waits for its retry
+* a node that is alive
+
+**cleanup** works in every mode, and **lilota** does not have to be started for it.
+
+Two things to know:
+
+* A node that has ended gets the status **dead** when a worker that is running notices that it is gone. Until then it is not deleted.
+* A retry keeps the ID of the task it retries in **previous_task_id**. That task can be deleted before the retry is.
+
+
 ## Tables
 
 ### Node (lilota_node)

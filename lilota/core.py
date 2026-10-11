@@ -1,5 +1,6 @@
 import atexit
 from collections import deque
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from lilota.constants import (
     DEFAULT_DB_URL,
@@ -9,7 +10,7 @@ from lilota.constants import (
 from lilota.heartbeat import Heartbeat, HeartbeatTask
 from lilota.models import Node
 from lilota.scheduler import LilotaScheduler
-from lilota.stores import NodeStore, TaskStore
+from lilota.stores import LogStore, NodeStore, TaskStore
 import logging
 from multiprocessing import cpu_count
 import os
@@ -438,6 +439,7 @@ class Lilota:
 
         self._node_store = NodeStore(self._db_url, None)
         self._task_store = TaskStore(self._db_url, None)
+        self._log_store = LogStore(self._db_url)
         self._is_started = False
 
     @property
@@ -597,6 +599,46 @@ class Lilota:
             )
 
         return id
+
+    def cleanup(self, older_than: timedelta) -> dict[str, int]:
+        """Delete old rows from the tables of lilota.
+
+        Nothing else deletes them: every task, every log entry and every node
+        stays in the database until this method is called. Call it from time to
+        time, for example once a day. It works in every mode, whether lilota is
+        started or not.
+
+        These rows are deleted if they are older than ``older_than``:
+          - Tasks that are finished: completed, failed, expired or cancelled.
+            The age is counted from the time the task ended or expired.
+          - Log entries. The age is counted from the time the entry was written.
+          - Nodes with the status dead. The age is counted from the time the
+            node was last seen.
+
+        A task that is waiting or being executed, a failed or expired task that
+        still waits for its retry, and a node that is alive are never deleted.
+
+        Args:
+          older_than (timedelta): The age from which on a row is deleted.
+            ``timedelta(days=30)`` deletes what is older than 30 days.
+
+        Returns:
+          dict[str, int]: The number of deleted rows, with the keys ``tasks``,
+          ``log_entries`` and ``nodes``.
+
+        Raises:
+          ValueError: If ``older_than`` is negative.
+        """
+        if older_than < timedelta(0):
+            raise ValueError("older_than must not be negative")
+
+        cutoff = datetime.now(timezone.utc) - older_than
+
+        return {
+            "tasks": self._task_store.delete_finished_tasks(cutoff),
+            "log_entries": self._log_store.delete_log_entries(cutoff),
+            "nodes": self._node_store.delete_dead_nodes(cutoff),
+        }
 
     def get_all_nodes(self) -> list[Node]:
         """Retrieve all registered scheduler nodes.

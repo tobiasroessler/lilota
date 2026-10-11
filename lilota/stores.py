@@ -11,7 +11,7 @@ from .models import (
     LogEntry,
 )
 from datetime import datetime, timezone, timedelta
-from sqlalchemy import create_engine, select, update, and_, or_
+from sqlalchemy import create_engine, delete, func, select, update, and_, not_, or_
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
 from typing import Any
@@ -141,6 +141,24 @@ class NodeStore(StoreBase):
                     .where(Node.id != exclude_node_id)
                     .where(Node.status != NodeStatus.DEAD)
                     .values(status=NodeStatus.DEAD)
+                )
+                return result.rowcount
+
+    def delete_dead_nodes(self, cutoff: datetime) -> int:
+        """Delete the nodes with the status DEAD that were last seen before the cutoff.
+
+        Args:
+            cutoff (datetime): Nodes last seen before this time are deleted.
+
+        Returns:
+            int: Number of nodes that were deleted.
+        """
+        with self._get_session() as session:
+            with session.begin():
+                result = session.execute(
+                    delete(Node).where(
+                        Node.status == NodeStatus.DEAD, Node.last_seen_at < cutoff
+                    )
                 )
                 return result.rowcount
 
@@ -277,6 +295,47 @@ class TaskStore(StoreBase):
                         expires_at=None,
                         locked_by=None,
                         locked_at=None,
+                    )
+                )
+                return result.rowcount
+
+    def delete_finished_tasks(self, cutoff: datetime) -> int:
+        """Delete the tasks that finished before the cutoff.
+
+        A task is finished when it is completed, failed, expired or cancelled. A
+        failed or expired task that still waits for its retry is kept. Without
+        it the retry would never be created.
+
+        A task finished at the time it ended. An expired task has no end time,
+        so the time it expired is used instead.
+
+        Args:
+            cutoff (datetime): Tasks that finished before this time are deleted.
+
+        Returns:
+            int: Number of tasks that were deleted.
+        """
+        finished_at = func.coalesce(Task.end_date_time, Task.expires_at, Task.run_at)
+        waits_for_retry = and_(
+            Task.status.in_([TaskStatus.FAILED, TaskStatus.EXPIRED]),
+            Task.retried_at.is_(None),
+            Task.attempts < Task.max_attempts,
+        )
+
+        with self._get_session() as session:
+            with session.begin():
+                result = session.execute(
+                    delete(Task).where(
+                        Task.status.in_(
+                            [
+                                TaskStatus.COMPLETED,
+                                TaskStatus.FAILED,
+                                TaskStatus.EXPIRED,
+                                TaskStatus.CANCELLED,
+                            ]
+                        ),
+                        finished_at < cutoff,
+                        not_(waits_for_retry),
                     )
                 )
                 return result.rowcount
@@ -601,6 +660,22 @@ class LogStore:
         """Return all log entries."""
         with self.get_session() as session:
             return session.query(LogEntry).order_by(LogEntry.created_at).all()
+
+    def delete_log_entries(self, cutoff: datetime) -> int:
+        """Delete the log entries that were written before the cutoff.
+
+        Args:
+            cutoff (datetime): Entries written before this time are deleted.
+
+        Returns:
+            int: Number of log entries that were deleted.
+        """
+        with self.get_session() as session:
+            with session.begin():
+                result = session.execute(
+                    delete(LogEntry).where(LogEntry.created_at < cutoff)
+                )
+                return result.rowcount
 
     def get_log_entries_by_node_id(self, node_id: UUID) -> list[LogEntry]:
         """Return all log entries associated with a given node."""

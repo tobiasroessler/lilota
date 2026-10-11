@@ -1687,8 +1687,161 @@ class LilotaTestCase(TestCase):
             "The error must say that only the result could not be stored",
         )
 
+    def test_cleanup___with_finished_tasks___should_delete_tasks_that_are_older(self):
+        # Arrange: tasks that have ended 60 days ago, and a task that has ended yesterday
+        completed_id = self.create_task_of_age(TaskStatus.COMPLETED, timedelta(days=60))
+        failed_id = self.create_task_of_age(TaskStatus.FAILED, timedelta(days=60))
+        expired_id = self.create_task_of_age(TaskStatus.EXPIRED, timedelta(days=60))
+        recent_id = self.create_task_of_age(TaskStatus.COMPLETED, timedelta(days=1))
+
+        # Tasks that are not finished, however old they are
+        created_id = self.create_task_of_age(TaskStatus.CREATED, timedelta(days=60))
+        running_id = self.create_task_of_age(TaskStatus.RUNNING, timedelta(days=60))
+        lilota = Lilota(db_url=self.DB_URL, mode=LilotaMode.SCHEDULER)
+
+        # Act
+        lilota.cleanup(older_than=timedelta(days=30))
+
+        # Assert
+        with LilotaTestCase.get_session() as session:
+            remaining_ids = {task.id for task in session.query(Task).all()}
+        self.assertNotIn(completed_id, remaining_ids)
+        self.assertNotIn(failed_id, remaining_ids)
+        self.assertNotIn(expired_id, remaining_ids)
+        self.assertEqual(remaining_ids, {recent_id, created_id, running_id})
+
+    def test_cleanup___with_failed_task_that_waits_for_its_retry___should_keep_task(
+        self,
+    ):
+        # Arrange: two tasks that have failed 60 days ago and have attempts left. One
+        # of them was retried, the other one was not: nothing ran that could do it.
+        waiting_id = self.create_task_of_age(TaskStatus.FAILED, timedelta(days=60))
+        retried_id = self.create_task_of_age(TaskStatus.FAILED, timedelta(days=60))
+        with LilotaTestCase.get_session() as session:
+            session.get(Task, waiting_id).max_attempts = 3
+            session.get(Task, retried_id).max_attempts = 3
+            session.get(Task, retried_id).retried_at = datetime.now(timezone.utc)
+            session.commit()
+        lilota = Lilota(db_url=self.DB_URL, mode=LilotaMode.SCHEDULER)
+
+        # Act
+        lilota.cleanup(older_than=timedelta(days=30))
+
+        # Assert
+        with LilotaTestCase.get_session() as session:
+            remaining_ids = {task.id for task in session.query(Task).all()}
+        self.assertEqual(remaining_ids, {waiting_id})
+
+    def test_cleanup___should_return_number_of_deleted_rows(self):
+        # Arrange
+        self.create_task_of_age(TaskStatus.COMPLETED, timedelta(days=60))
+        self.create_task_of_age(TaskStatus.FAILED, timedelta(days=60))
+        self.create_task_of_age(TaskStatus.COMPLETED, timedelta(days=1))
+        self.create_log_entry_of_age(timedelta(days=60))
+        self.create_node_of_age(NodeStatus.DEAD, timedelta(days=60))
+        self.create_node_of_age(NodeStatus.DEAD, timedelta(days=60))
+        self.create_node_of_age(NodeStatus.DEAD, timedelta(days=60))
+        lilota = Lilota(db_url=self.DB_URL, mode=LilotaMode.SCHEDULER)
+
+        # Act
+        deleted = lilota.cleanup(older_than=timedelta(days=30))
+
+        # Assert
+        self.assertEqual(deleted, {"tasks": 2, "log_entries": 1, "nodes": 3})
+
+    def test_cleanup___with_negative_age___should_raise(self):
+        # Arrange: a task that would be deleted with any age
+        task_id = self.create_task_of_age(TaskStatus.COMPLETED, timedelta(days=60))
+        lilota = Lilota(db_url=self.DB_URL, mode=LilotaMode.SCHEDULER)
+
+        # Act
+        with self.assertRaises(ValueError) as raised:
+            lilota.cleanup(older_than=timedelta(days=-30))
+
+        # Assert
+        self.assertEqual(str(raised.exception), "older_than must not be negative")
+        self.assertIsNotNone(lilota.get_task_by_id(task_id))
+
+    def test_cleanup___with_log_entries___should_delete_entries_that_are_older(self):
+        # Arrange
+        old_id = self.create_log_entry_of_age(timedelta(days=60))
+        recent_id = self.create_log_entry_of_age(timedelta(days=1))
+        lilota = Lilota(db_url=self.DB_URL, mode=LilotaMode.SCHEDULER)
+
+        # Act
+        lilota.cleanup(older_than=timedelta(days=30))
+
+        # Assert
+        remaining_ids = {entry.id for entry in LogStore(self.DB_URL).get_log_entries()}
+        self.assertNotIn(old_id, remaining_ids)
+        self.assertEqual(remaining_ids, {recent_id})
+
+    def test_cleanup___with_nodes___should_delete_dead_nodes_that_are_older(self):
+        # Arrange: dead nodes that were last seen 60 days ago and yesterday, and a
+        # node that is alive
+        old_dead_id = self.create_node_of_age(NodeStatus.DEAD, timedelta(days=60))
+        recent_dead_id = self.create_node_of_age(NodeStatus.DEAD, timedelta(days=1))
+        alive_id = self.create_node_of_age(NodeStatus.RUNNING, timedelta(seconds=1))
+        lilota = Lilota(db_url=self.DB_URL, mode=LilotaMode.SCHEDULER)
+
+        # Act
+        lilota.cleanup(older_than=timedelta(days=30))
+
+        # Assert
+        remaining_ids = {node.id for node in lilota.get_all_nodes()}
+        self.assertNotIn(old_dead_id, remaining_ids)
+        self.assertEqual(remaining_ids, {recent_dead_id, alive_id})
+
     def sleep(self, seconds: float = 0.3):
         time.sleep(seconds)
+
+    def create_task_of_age(self, status: TaskStatus, age: timedelta) -> UUID:
+        """Create a task whose times all lie the given time in the past, and return its ID.
+
+        These are the time it was scheduled for and, depending on the status, the
+        times it was started, has ended and has expired.
+        """
+        moment = datetime.now(timezone.utc) - age
+        is_started = status != TaskStatus.CREATED
+        has_ended = status in (TaskStatus.COMPLETED, TaskStatus.FAILED)
+
+        with LilotaTestCase.get_session() as session:
+            task = Task(
+                name="test",
+                status=status,
+                run_at=moment,
+                start_date_time=moment if is_started else None,
+                end_date_time=moment if has_ended else None,
+                expires_at=moment if status == TaskStatus.EXPIRED else None,
+            )
+            session.add(task)
+            session.commit()
+            return task.id
+
+    def create_log_entry_of_age(self, age: timedelta) -> int:
+        """Create a log entry that was written the given time ago, and return its ID."""
+        with LilotaTestCase.get_session() as session:
+            entry = LogEntry(
+                created_at=datetime.now(timezone.utc) - age,
+                level="INFO",
+                logger="lilota.test",
+                message="Test",
+            )
+            session.add(entry)
+            session.commit()
+            return entry.id
+
+    def create_node_of_age(self, status: NodeStatus, age: timedelta) -> UUID:
+        """Create a node that was last seen the given time ago, and return its ID."""
+        with LilotaTestCase.get_session() as session:
+            node = Node(
+                type=NodeType.WORKER,
+                status=status,
+                last_seen_at=datetime.now(timezone.utc) - age,
+            )
+            session.add(node)
+            session.commit()
+            return node.id
 
     def error_message(self, task: Task) -> str | None:
         """Return the first line of the error of the task, or None if it has no error."""
