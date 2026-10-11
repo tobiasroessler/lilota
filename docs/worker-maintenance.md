@@ -27,6 +27,8 @@ Workers that have not sent a heartbeat within a configured timeout are considere
 
 This ensures that inactive or crashed workers do not remain in an inconsistent state.
 
+The leader only looks for dead nodes when its own heartbeats have reached the database without a gap for as long as the node timeout. If the database could not be reached, or the whole machine stood still, the heartbeats of all workers are missing, and a worker that is alive must not be taken for dead. A worker that has just started therefore finds dead nodes after the node timeout at the earliest.
+
 
 ### 2. Tasks of Dead Nodes
 

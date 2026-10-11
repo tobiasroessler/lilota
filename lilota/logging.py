@@ -1,4 +1,5 @@
 import logging
+import sys
 from datetime import datetime
 from .models import LogEntry
 from .stores import LogStore
@@ -24,22 +25,43 @@ class SqlAlchemyHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         """Persist a log record in the database.
 
+        The method never raises. A record that cannot be stored, for example
+        because the database cannot be reached, is written to stderr instead.
+        Otherwise code that logs an error would fail a second time, in its
+        error handling, and a thread that only wanted to report a problem
+        would end.
+
         Args:
           record (logging.LogRecord): Log record to store.
         """
-        with self.log_store.get_session() as session:
-            entry = LogEntry(
-                created_at=datetime.fromtimestamp(record.created),
-                level=record.levelname,
-                logger=record.name,
-                message=self.format(record),
-                process=record.processName,
-                thread=record.threadName,
-                node_id=getattr(record, "node_id", None),
-                task_id=getattr(record, "task_id", None),
+        try:
+            with self.log_store.get_session() as session:
+                entry = LogEntry(
+                    created_at=datetime.fromtimestamp(record.created),
+                    level=record.levelname,
+                    logger=record.name,
+                    message=self.format(record),
+                    process=record.processName,
+                    thread=record.threadName,
+                    node_id=getattr(record, "node_id", None),
+                    task_id=getattr(record, "task_id", None),
+                )
+                session.add(entry)
+                session.commit()
+        except Exception:
+            self._write_to_stderr(record)
+
+    def _write_to_stderr(self, record: logging.LogRecord) -> None:
+        # One line and not the traceback: while the database cannot be reached, every
+        # heartbeat of every node ends up here.
+        try:
+            print(
+                f"lilota: {record.levelname}: {record.getMessage()} "
+                "(the log entry could not be written to the database)",
+                file=sys.stderr,
             )
-            session.add(entry)
-            session.commit()
+        except Exception:
+            pass
 
 
 class ContextLogger(logging.LoggerAdapter):

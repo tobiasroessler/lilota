@@ -7,7 +7,7 @@ from unittest import TestCase, main
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from lilota.constants import DEFAULT_TEST_DB_URL
-from lilota.worker import LilotaWorker
+from lilota.worker import LilotaWorker, WorkerHeartbeatTask
 from lilota.models import (
     Node,
     NodeType,
@@ -18,10 +18,10 @@ from lilota.models import (
     LogEntry,
 )
 from lilota.db.alembic import upgrade_db
-from lilota.stores import TaskStore, LogStore
+from lilota.stores import NodeLeaderStore, NodeStore, TaskStore, LogStore
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import threading
 from uuid import UUID
 
@@ -373,7 +373,11 @@ class LilotaWorkerTestCase(TestCase):
         )
         t2 = threading.Thread(target=worker2.start, daemon=True)
         t2.start()
-        time.sleep(2)
+
+        # The second worker becomes the leader when the lease of the first one has
+        # expired. It looks for dead nodes when its own heartbeats have reached the
+        # database for as long as the node timeout of 2 seconds.
+        time.sleep(4)
         worker2._heartbeat.stop()
 
         # Assert
@@ -399,12 +403,15 @@ class LilotaWorkerTestCase(TestCase):
 
         worker2_id = worker2.get_node().id
         log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(worker2_id)
-        self.assertEqual(len(log_entries), 3)
         self.assertEqual("Node started", log_entries[0].message)
         self.assertEqual(
             f"Leadership acquired (new node id: {worker2_id})", log_entries[1].message
         )
-        self.assertEqual("Marked 1 stale node(s) as DEAD", log_entries[2].message)
+
+        # In between the leader has renewed its lease
+        self.assertIn(
+            "Marked 1 stale node(s) as DEAD", [entry.message for entry in log_entries]
+        )
         worker1.stop()
         worker2.stop()
         t1.join(1)
@@ -488,6 +495,112 @@ class LilotaWorkerTestCase(TestCase):
         # Assert
         task: Task = store.get_task_by_id(task_id)
         self.assertEqual(task.status, TaskStatus.EXPIRED)
+
+    def test_heartbeat___when_worker_has_just_started___should_not_mark_other_nodes_as_dead(
+        self,
+    ):
+        # Arrange: a node that was not seen for an hour, and a worker that knows
+        # nothing about the time before its first heartbeat
+        node_id = self.create_node(last_seen_at=self.now() - timedelta(hours=1))
+        heartbeat_task = self.create_heartbeat_task()
+
+        # Act
+        heartbeat_task.execute()
+
+        # Assert
+        self.assertEqual(self.get_node(node_id).status, NodeStatus.RUNNING)
+
+    def test_heartbeat___when_heartbeats_have_reached_database_for_node_timeout___should_mark_other_nodes_as_dead(
+        self,
+    ):
+        # Arrange
+        node_id = self.create_node(last_seen_at=self.now() - timedelta(hours=1))
+        heartbeat_task = self.create_heartbeat_task()
+
+        # Act: heartbeats without a gap, for longer than the node timeout of 1 second
+        self.execute_heartbeats(
+            heartbeat_task,
+            until=lambda: self.get_node(node_id).status == NodeStatus.DEAD,
+        )
+
+        # Assert
+        self.assertEqual(self.get_node(node_id).status, NodeStatus.DEAD)
+
+    def test_heartbeat___when_heartbeats_were_missing___should_not_give_back_tasks_of_other_nodes(
+        self,
+    ):
+        # Arrange: a worker that may find dead nodes
+        heartbeat_task = self.create_heartbeat_task()
+        self.execute_heartbeats(
+            heartbeat_task, until=heartbeat_task._can_find_dead_nodes
+        )
+        may_find_dead_nodes = heartbeat_task._can_find_dead_nodes()
+
+        # The database cannot be reached for 1.5 seconds: the heartbeats of the worker
+        # are missing, and so are those of another worker that is executing a task
+        time.sleep(1.5)
+        node_id = self.create_node(last_seen_at=self.now() - timedelta(seconds=1.5))
+        store = TaskStore(LilotaWorkerTestCase.DB_URL, None)
+        task_id = store.create_task("test")
+        store.get_next_task(node_id)
+        store.start_task(task_id, max_attempts=1)
+
+        # Act: the first heartbeat after the outage
+        heartbeat_task.execute()
+
+        # Assert: the other worker was not seen for longer than the node timeout of
+        # 1 second, but it is alive
+        task = store.get_task_by_id(task_id)
+        self.assertTrue(may_find_dead_nodes)
+        self.assertEqual(self.get_node(node_id).status, NodeStatus.RUNNING)
+        self.assertEqual(task.status, TaskStatus.RUNNING)
+        self.assertEqual(task.locked_by, node_id)
+
+    def now(self) -> datetime:
+        return datetime.now(timezone.utc)
+
+    def create_heartbeat_task(self) -> WorkerHeartbeatTask:
+        """Create the heartbeat task of a worker: a heartbeat every 0.2 seconds, and a node timeout of 1 second."""
+        logger = logging.getLogger("test_logger")
+        node_timeout_sec = 1
+        node_store = NodeStore(LilotaWorkerTestCase.DB_URL, logger)
+        return WorkerHeartbeatTask(
+            0.2,
+            None,
+            node_store.create_node(NodeType.WORKER, NodeStatus.RUNNING),
+            node_timeout_sec,
+            node_store,
+            NodeLeaderStore(LilotaWorkerTestCase.DB_URL, logger, node_timeout_sec),
+            TaskStore(LilotaWorkerTestCase.DB_URL, logger),
+            logger,
+        )
+
+    def execute_heartbeats(
+        self, heartbeat_task: WorkerHeartbeatTask, until, timeout: float = 5
+    ) -> None:
+        """Execute the heartbeat task in its interval until the condition is met, or until the timeout."""
+        deadline = time.monotonic() + timeout
+
+        while True:
+            heartbeat_task.execute()
+            if until() or time.monotonic() >= deadline:
+                return
+            time.sleep(heartbeat_task.interval)
+
+    def create_node(self, last_seen_at: datetime) -> UUID:
+        with LilotaWorkerTestCase.get_session() as session:
+            node = Node(
+                type=NodeType.WORKER,
+                status=NodeStatus.RUNNING,
+                last_seen_at=last_seen_at,
+            )
+            session.add(node)
+            session.commit()
+            return node.id
+
+    def get_node(self, id: UUID) -> Node:
+        with LilotaWorkerTestCase.get_session() as session:
+            return session.get(Node, id)
 
     def create_task(self, task: Task) -> Task:
         with LilotaWorkerTestCase.get_session() as session:

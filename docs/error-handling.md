@@ -29,6 +29,24 @@ What happens to the task the worker was executing depends on why the worker was 
 * The task ran longer than its timeout: it gets the status **expired** and is retried if it has attempts left. See [Retry mechanism](retry-mechanism.md).
 * The process was terminated by a signal: the task is given back and executed again by another worker, about 20 seconds later. See [Worker maintenance](worker-maintenance.md).
 
+## The database cannot be reached
+
+**lilota** keeps everything in the database. If the database cannot be reached for a while, for example because it is restarted, the workers keep running. This is not a fatal error, and nothing has to be restarted.
+
+* A worker waits and tries again until the database is back. It tries as often as it looks for new tasks when there are none, which is every 5 seconds by default (**max_task_heartbeat_interval**).
+* A task that is being executed is not interrupted. If it ends while the database cannot be reached, its result is stored as soon as the database is back.
+* The heartbeats of the nodes fail in that time and go on afterwards.
+
+A log entry cannot be written to the database in that time either. It is written to **stderr** instead, as one line:
+
+```
+lilota: ERROR: The database cannot be reached. The worker waits and tries again (the log entry could not be written to the database)
+```
+
+Methods that you call, like **schedule** and **get_task_by_id**, raise the error of the database to your application.
+
+> **Note:** A worker that is started while the database cannot be reached fails, for example the worker that replaces a worker that was killed. That is a fatal error, as described in the next section.
+
 ## Worker script fails
 
 If the worker script itself ends with an error, for example because of an exception while it is imported, starting it again would fail the same way. **Lilota** stops all workers and reports a fatal error. The error is what the process has written to **stderr**.

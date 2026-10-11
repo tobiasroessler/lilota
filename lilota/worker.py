@@ -12,6 +12,7 @@ from lilota.logging import create_context_logger
 from lilota.stores import NodeStore, NodeLeaderStore, TaskStore
 from lilota.heartbeat import Heartbeat, HeartbeatTask
 from lilota.utils import exception_to_dict, error_to_dict
+from sqlalchemy.exc import InterfaceError, OperationalError
 import logging
 import os
 import signal
@@ -57,6 +58,8 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
         self._node_leader_store = node_leader_store
         self._task_store = task_store
         self._is_leader = False
+        self._last_heartbeat_at: datetime = None
+        self._heartbeats_without_gap_since: datetime = None
 
     def execute(self):
         """Execute the heartbeat logic.
@@ -85,14 +88,45 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
                 self._node_id
             )
 
+        # This heartbeat has reached the database
+        self._remember_heartbeat()
+
         # Leader-only work
         if self._is_leader:
             self._run_maintenance()
 
+    def _remember_heartbeat(self):
+        now = datetime.now(timezone.utc)
+
+        # A heartbeat is missing if the last one is longer ago than two intervals
+        if self._last_heartbeat_at is None or now - self._last_heartbeat_at > timedelta(
+            seconds=2 * self.interval
+        ):
+            self._heartbeats_without_gap_since = now
+
+        self._last_heartbeat_at = now
+
+    def _can_find_dead_nodes(self) -> bool:
+        """Whether this worker may take a node that was not seen for dead.
+
+        A node is taken for dead because its heartbeats are missing. They are
+        also missing when no worker can reach the database, or when the whole
+        machine stood still. To the first worker that is back, every other
+        worker then looks dead, and giving back their tasks would execute these
+        tasks twice.
+
+        So this worker only decides when its own heartbeats have reached the
+        database without a gap for as long as the node timeout. In that time
+        every worker that is alive has sent a heartbeat as well.
+        """
+        without_gap = datetime.now(timezone.utc) - self._heartbeats_without_gap_since
+        return without_gap >= timedelta(seconds=self._node_timeout_sec)
+
     def _run_maintenance(self) -> None:
         try:
-            self._update_status_on_dead_nodes()
-            self._release_tasks_of_dead_nodes()
+            if self._can_find_dead_nodes():
+                self._update_status_on_dead_nodes()
+                self._release_tasks_of_dead_nodes()
             self._update_status_on_expired_tasks()
             self._retry_tasks()
         except Exception:
@@ -397,12 +431,45 @@ class LilotaWorker(LilotaNode):
         # Still running: the worker does not lead a group, or it handles SIGTERM
         os._exit(1)
 
+    def _wait_for_database(self, call: Callable, *args) -> Any:
+        """Call a method of the task store. Wait if the database cannot be reached.
+
+        The call is repeated until the database can be reached again. Without
+        that the error would end the worker process. The process manager would
+        take it for a worker script that failed and stop all workers for good.
+
+        Args:
+          call (Callable): Method of the task store.
+          *args: Arguments of the method.
+
+        Returns:
+          Any: What the method returns.
+        """
+        is_reachable = True
+
+        while True:
+            try:
+                result = call(*args)
+            except (OperationalError, InterfaceError):
+                if is_reachable:
+                    is_reachable = False
+                    self._logger.exception(
+                        "The database cannot be reached. The worker waits and tries again"
+                    )
+                time.sleep(self._max_task_heartbeat_interval)
+            else:
+                if not is_reachable:
+                    self._logger.warning("The database can be reached again")
+                return result
+
     def _execute_tasks(self):
         interval: float = self._task_heartbeat_interval
 
         while True:
             # Get the next available task
-            task = self._task_store.get_next_task(self._node_id)
+            task = self._wait_for_database(
+                self._task_store.get_next_task, self._node_id
+            )
             if task:
                 # Initialize the variables
                 task_id = task.id
@@ -421,7 +488,9 @@ class LilotaWorker(LilotaNode):
                 if registered_task is None:
                     error_message = f"Task {task.name!r} not registered"
                     error = error_to_dict(error_message)
-                    self._task_store.end_task_failure(task_id, error, task_progress)
+                    self._wait_for_database(
+                        self._task_store.end_task_failure, task_id, error, task_progress
+                    )
                     logger.error(error_message)
                 else:
                     # Execute the task
@@ -429,8 +498,8 @@ class LilotaWorker(LilotaNode):
                         # Set status to running
                         timeout = registered_task.timeout
                         max_attempts = registered_task.max_attempts
-                        started_task = self._task_store.start_task(
-                            task_id, max_attempts, timeout
+                        started_task = self._wait_for_database(
+                            self._task_store.start_task, task_id, max_attempts, timeout
                         )
 
                         # Run task
@@ -439,16 +508,22 @@ class LilotaWorker(LilotaNode):
                         )
 
                         # Set status to completed
-                        self._task_store.end_task_success(
-                            task_id, result, task_progress
+                        self._wait_for_database(
+                            self._task_store.end_task_success,
+                            task_id,
+                            result,
+                            task_progress,
                         )
                     except Exception as ex:
                         # A task that fails is not a reason to stop the worker. The
                         # task is marked as failed, which is what makes it a candidate
                         # for a retry, and the worker goes on with the next task.
                         self._logger.exception(f"Task execution failed (id: {task_id})")
-                        self._task_store.end_task_failure(
-                            task_id, exception_to_dict(ex), task_progress
+                        self._wait_for_database(
+                            self._task_store.end_task_failure,
+                            task_id,
+                            exception_to_dict(ex),
+                            task_progress,
                         )
             else:
                 # Increase the interval

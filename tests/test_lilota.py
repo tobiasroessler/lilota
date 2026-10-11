@@ -1346,6 +1346,45 @@ class LilotaTestCase(TestCase):
             f"left. The task still has the status '{task.status}'",
         )
 
+    def test_database_outage___when_database_is_reachable_again___should_execute_task(
+        self,
+    ):
+        # Arrange: for each worker the database cannot be reached the first two times
+        # the worker asks for the next task, and the first two times it stores the
+        # result of a task
+        lilota = Lilota(
+            db_url=self.DB_URL,
+            script_path=str(
+                Path(__file__).resolve().parent
+                / "scripts"
+                / "database_outage_test_script.py"
+            ),
+            number_of_workers=2,
+            process_manager_interval=0.1,
+        )
+
+        # Act
+        with redirect_stderr(io.StringIO()):
+            lilota.start()
+
+            try:
+                task_id = lilota.schedule("hello_world")
+                task = self.wait_for_task(
+                    lilota, task_id, [TaskStatus.COMPLETED], timeout=15
+                )
+                has_failed = lilota.has_failed()
+                number_of_workers = len(lilota._process_manager._processes)
+            finally:
+                lilota.stop()
+
+        # Assert
+        self.assertFalse(
+            has_failed,
+            "A database that cannot be reached for a moment must not stop the workers",
+        )
+        self.assertEqual(number_of_workers, 2)
+        self.assertEqual(task.status, TaskStatus.COMPLETED)
+
     def sleep(self, seconds: float = 0.3):
         time.sleep(seconds)
 
