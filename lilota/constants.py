@@ -13,3 +13,10 @@ VERSION_TABLE = f"{TABLE_PREFIX}alembic_version"
 
 # Where lilota up to 1.1.1 kept its migration revision.
 LEGACY_VERSION_TABLE = "alembic_version"
+
+# The exit code of a worker process that stops itself because the task it is executing
+# has expired. With it the process manager can tell a worker that lilota stopped on
+# purpose from a worker script that failed. Both end with an error, but only the first
+# one is to be restarted. 75 is EX_TEMPFAIL in sysexits.h: a failure that is worth
+# another try.
+WORKER_EXIT_CODE_TASK_EXPIRED = 75

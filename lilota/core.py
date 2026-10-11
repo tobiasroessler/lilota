@@ -1,6 +1,7 @@
 import atexit
+from collections import deque
 from enum import Enum
-from lilota.constants import DEFAULT_DB_URL
+from lilota.constants import DEFAULT_DB_URL, WORKER_EXIT_CODE_TASK_EXPIRED
 from lilota.heartbeat import Heartbeat, HeartbeatTask
 from lilota.models import Node
 from lilota.scheduler import LilotaScheduler
@@ -16,11 +17,88 @@ from uuid import UUID, uuid4
 import threading
 
 
+class WorkerErrorOutput(threading.Thread):
+    """Reads what a worker process writes to stderr, for as long as the process runs.
+
+    The stderr of a worker process is connected to a pipe, because the text is needed
+    when the process fails (see ``ProcessManager.monitor``). A pipe only holds a
+    limited amount of data. If nobody reads from it, the worker blocks as soon as it
+    is full, in the middle of whatever task it is executing. This thread therefore
+    reads every line the moment it is written.
+
+    Each line is passed on to the stderr of the current process, so that warnings and
+    tracebacks of a worker are visible where the output of the application is. The
+    last lines are also kept, to be reported as the error if the process fails.
+    """
+
+    # How much of the output is kept for the error message. A worker can run for
+    # weeks, so keeping everything is not an option.
+    MAX_LINES = 200
+    MAX_LINE_LENGTH = 8192
+
+    # How long to wait for the rest of the output after the process has exited. The
+    # pipe stays open for as long as a process started by the worker still uses it.
+    JOIN_TIMEOUT = 2.0
+
+    def __init__(self, proc: subprocess.Popen):
+        """Initializes the reader. It starts reading when ``start()`` is called.
+
+        Args:
+          proc (subprocess.Popen): Worker process, started with ``stderr=PIPE``
+            in text mode.
+        """
+        super().__init__(name=f"lilota_worker_stderr_{proc.pid}", daemon=True)
+        self._stream = proc.stderr
+        self._last_lines: deque[str] = deque(maxlen=self.MAX_LINES)
+        self._lock = threading.Lock()
+
+    def run(self) -> None:
+        """Reads the stream until the worker process closes it."""
+        try:
+            # readline with a limit instead of iterating over the stream: a worker
+            # that writes megabytes without a line break is read in pieces.
+            while line := self._stream.readline(self.MAX_LINE_LENGTH):
+                with self._lock:
+                    self._last_lines.append(line)
+                self._forward(line)
+        except ValueError:
+            # The stream was closed while reading from it
+            pass
+        finally:
+            self._stream.close()
+
+    def _forward(self, line: str) -> None:
+        # Nothing that goes wrong here may stop the reading. sys.stderr is looked up
+        # for every line, so that an application that replaces it gets the output.
+        try:
+            if sys.stderr is not None:
+                sys.stderr.write(line)
+                sys.stderr.flush()
+        except Exception:
+            pass
+
+    def text(self) -> str:
+        """Returns the last lines the worker process wrote to stderr.
+
+        Meant to be called after the process has exited. Waits for the remaining
+        output to be read, but not longer than ``JOIN_TIMEOUT`` seconds.
+
+        Returns:
+          str: At most the last ``MAX_LINES`` lines, or an empty string if the
+          process wrote nothing to stderr.
+        """
+        self.join(self.JOIN_TIMEOUT)
+        with self._lock:
+            return "".join(self._last_lines)
+
+
 class ManagedProcess:
     def __init__(self, proc: subprocess.Popen, script_path: str):
         self.id = uuid4()
         self.proc = proc
         self.script_path = script_path
+        self.error_output = WorkerErrorOutput(proc)
+        self.error_output.start()
 
 
 class ProcessManager:
@@ -41,6 +119,10 @@ class ProcessManager:
         The process is launched using the current Python interpreter and added
         to the internal list of managed processes.
 
+        What the process writes to stdout goes to the stdout of the current
+        process. What it writes to stderr is read by a ``WorkerErrorOutput``,
+        which passes it on to the stderr of the current process.
+
         Args:
           script_path (str): Path to the Python script to execute.
 
@@ -48,10 +130,16 @@ class ProcessManager:
           subprocess.Popen: The Popen object representing the started process.
         """
         proc = subprocess.Popen(
-            [sys.executable, script_path],
-            stdout=subprocess.PIPE,
+            # -u: without it Python buffers the output of the worker whenever it does
+            # not go to a terminal. The text would show up late, and never if the
+            # worker is stopped before its buffer is full.
+            [sys.executable, "-u", script_path],
+            # stdout is not redirected. A pipe that nobody reads from blocks the
+            # worker as soon as it is full.
+            stdout=None,
             stderr=subprocess.PIPE,
             text=True,
+            errors="replace",
             preexec_fn=os.setsid if os.name != "nt" else None,
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
         )
@@ -63,15 +151,21 @@ class ProcessManager:
         """Monitors managed processes for termination and handles restarts.
 
         Iterates over all managed processes and checks whether they have exited.
-        If a process exits with a non-zero return code and produces stderr output,
-        all processes are stopped and the fatal error callback is invoked.
+
+        A process that was killed is restarted using the original script path.
+        That is a worker that stopped itself because its task has expired, or a
+        process that was terminated by a signal. Such a worker has not failed by
+        itself, so what it has written to stderr before does not matter.
+
+        If a process ends on its own with a non-zero return code and has produced
+        stderr output, the script has failed. All processes are stopped and the
+        fatal error callback is invoked.
 
         The same happens if a process exits successfully. A started worker runs
         until it is stopped from the outside, so a script that ends on its own
         never started its worker.
 
-        In all other cases the process is automatically restarted using the
-        original script path.
+        In all other cases the process is restarted as well.
         """
         for mp in list(self._processes):
             proc = mp.proc
@@ -79,13 +173,20 @@ class ProcessManager:
 
             if returncode is not None:  # process exited
                 # This cannot be debugged. Use print statements because if the worker is killed also the debugger stops.
-                stdout, stderr = proc.communicate()
+                stderr = mp.error_output.text()
 
-                # Error handling in case of an exception
                 # = 0: Process exited successfully
-                # > 0:Process exited with an error
+                # > 0: Process exited with an error
                 # < 0: Process was terminated by a signal (Unix only)
-                if returncode != 0 and stderr:
+                was_killed = (
+                    returncode < 0 or returncode == WORKER_EXIT_CODE_TASK_EXPIRED
+                )
+
+                # Error handling in case of an exception. Only for a process that
+                # ended on its own: the stderr output of a worker is everything it
+                # has written since it was started, so a killed worker that once
+                # wrote a warning would be taken for a script that failed.
+                if not was_killed and returncode != 0 and stderr:
                     self._handle_error(stderr)
                     return
 
@@ -132,6 +233,10 @@ class ProcessManager:
                 proc.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
                 self._kill(proc)
+
+        # Let the readers finish, so that the pipes are closed
+        for mp in self._processes:
+            mp.error_output.join(WorkerErrorOutput.JOIN_TIMEOUT)
 
         self._processes.clear()
 

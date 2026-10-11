@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Type, Optional, Any, get_type_hints
-from lilota.constants import DEFAULT_DB_URL
+from lilota.constants import DEFAULT_DB_URL, WORKER_EXIT_CODE_TASK_EXPIRED
 from lilota.node import LilotaNode, NodeHeartbeatTask
 from lilota.models import NodeType, Task, TaskProgress, RegisteredTask, TaskContext
 from lilota.logging import create_context_logger
@@ -355,11 +355,13 @@ class LilotaWorker(LilotaNode):
                             task_id, result, task_progress
                         )
                     except Exception as ex:
+                        # A task that fails is not a reason to stop the worker. The
+                        # task is marked as failed, which is what makes it a candidate
+                        # for a retry, and the worker goes on with the next task.
                         self._logger.exception(f"Task execution failed (id: {task_id})")
                         self._task_store.end_task_failure(
                             task_id, exception_to_dict(ex), task_progress
                         )
-                        raise
             else:
                 # Increase the interval
                 interval = min(interval * 2, self._max_task_heartbeat_interval)
@@ -405,8 +407,9 @@ class LilotaWorker(LilotaNode):
                 f"The process will be stopped because the task '{task.name}' ({task.id}) has expired"
             )
 
-            # Kill the worker process
-            os._exit(1)
+            # Kill the worker process. The exit code tells the process manager that
+            # the worker was stopped on purpose and has to be restarted.
+            os._exit(WORKER_EXIT_CODE_TASK_EXPIRED)
 
         timer = threading.Timer(timeout, watchdog)
         timer.start()

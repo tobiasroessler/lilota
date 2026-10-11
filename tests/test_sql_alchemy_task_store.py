@@ -9,7 +9,7 @@ from unittest import TestCase, main
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from lilota.constants import DEFAULT_TEST_DB_URL
-from lilota.models import Task, TaskStatus
+from lilota.models import Task, TaskProgress, TaskStatus
 from lilota.db.alembic import upgrade_db
 from lilota.stores import TaskStore
 
@@ -412,6 +412,58 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
             self.assertTrue(
                 before + expected_delay <= retry_task.run_at <= after + expected_delay
             )
+
+    def test_create_task___should_be_the_first_attempt(self):
+        # Arrange
+        logger = logging.getLogger("test_logger")
+        store = TaskStore(self.DB_URL, logger)
+
+        # Act
+        task_id = store.create_task("test")
+
+        # Assert
+        task = store.get_task_by_id(task_id)
+        self.assertEqual(task.attempts, 1)
+        self.assertEqual(task.max_attempts, 1)
+
+    def test_retry_tasks___with_task_that_always_fails___should_execute_task_max_attempts_times(
+        self,
+    ):
+        for max_attempts in [1, 2, 3]:
+            with self.subTest(max_attempts=max_attempts):
+                # Arrange
+                self.delete_all_tasks()
+                logger = logging.getLogger("test_logger")
+                store = TaskStore(self.DB_URL, logger)
+                store.create_task("test")
+                executions = 0
+
+                # Act: execute every task that is waiting, the way a worker does, let
+                # it fail and retry, until no task is waiting anymore
+                while True:
+                    with self.get_session() as session:
+                        waiting_tasks = (
+                            session.query(Task)
+                            .filter(Task.status == TaskStatus.CREATED)
+                            .all()
+                        )
+
+                    if not waiting_tasks:
+                        break
+
+                    for task in waiting_tasks:
+                        store.start_task(task.id, max_attempts)
+                        store.end_task_failure(
+                            task.id,
+                            {"message": "Error"},
+                            TaskProgress(task.id, store.set_progress),
+                        )
+                        executions += 1
+
+                    store.retry_tasks()
+
+                # Assert
+                self.assertEqual(executions, max_attempts)
 
     def test_retry_tasks___should_respect_batch_size(self):
         # Arrange

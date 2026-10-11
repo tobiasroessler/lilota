@@ -2,14 +2,19 @@ import sys
 import os
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from contextlib import contextmanager, redirect_stderr
 from dataclasses import dataclass
+import io
 import logging
+import signal
+import subprocess
+import tempfile
 from unittest import TestCase, main
 from typing import Any
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from lilota.constants import DEFAULT_TEST_DB_URL
-from lilota.core import Lilota, LilotaMode, ManagedProcess
+from lilota.core import Lilota, LilotaMode, ManagedProcess, WorkerErrorOutput
 from lilota.models import Node, NodeLeader, Task, TaskStatus, LogEntry, NodeType
 from lilota.db.alembic import upgrade_db
 from lilota.stores import LogStore
@@ -64,6 +69,15 @@ class AddOutputInvalid:
 
     def __init__(self, sum: int):
         self.sum = sum
+
+
+# What the operating system holds for a process whose output is connected to a pipe
+# (Linux and macOS). A process that writes more blocks until somebody reads from the
+# other end of the pipe.
+PIPE_CAPACITY = 64 * 1024
+
+OUTPUT_LINE = "This line is written by a lilota task. " * 25
+MORE_LINES_THAN_A_PIPE_HOLDS = 2 * PIPE_CAPACITY // len(OUTPUT_LINE) + 1
 
 
 class LilotaTestCase(TestCase):
@@ -743,13 +757,16 @@ class LilotaTestCase(TestCase):
         self.assertIsNone(lilota.error)
 
         # Act
-        lilota.start()
-        lilota.wait_for_failure()
+        with redirect_stderr(io.StringIO()) as worker_stderr:
+            lilota.start()
+            lilota.wait_for_failure()
 
         # Assert
         try:
             self.assertTrue(lilota.has_failed())
             self.assertIsNotNone(lilota.error)
+            self.assertIn("Exception: Error in script", lilota.error)
+            self.assertIn("Exception: Error in script", worker_stderr.getvalue())
             self.assertEqual(len(lilota._process_manager._processes), 0)
         finally:
             lilota.stop()
@@ -784,8 +801,411 @@ class LilotaTestCase(TestCase):
         finally:
             lilota.stop()
 
+    def test_schedule___task_writes_much_output_to_stdout___should_complete_task(self):
+        # Arrange
+        with self.worker_stdout_in_file() as stdout_path:
+            lilota = Lilota(
+                db_url=self.DB_URL,
+                script_path=str(
+                    Path(__file__).resolve().parent
+                    / "scripts"
+                    / "output_test_script.py"
+                ),
+                number_of_workers=1,
+            )
+            lilota.start()
+
+            try:
+                # Act
+                id = lilota.schedule(
+                    "write_to_stdout",
+                    {"line": OUTPUT_LINE, "count": MORE_LINES_THAN_A_PIPE_HOLDS},
+                )
+                task = self.wait_for_task(lilota, id, [TaskStatus.COMPLETED])
+            finally:
+                lilota.stop()
+
+            output = stdout_path.read_text()
+
+        # Assert
+        self.assertEqual(
+            task.status,
+            TaskStatus.COMPLETED,
+            "The worker hangs because nobody reads what it writes to stdout",
+        )
+        self.assertEqual(output.count(OUTPUT_LINE), MORE_LINES_THAN_A_PIPE_HOLDS)
+
+    def test_schedule___task_writes_one_line_to_stdout___should_show_line_while_worker_is_running(
+        self,
+    ):
+        # Arrange
+        line = "One line written by a lilota task"
+
+        with self.worker_stdout_in_file() as stdout_path:
+            lilota = Lilota(
+                db_url=self.DB_URL,
+                script_path=str(
+                    Path(__file__).resolve().parent
+                    / "scripts"
+                    / "output_test_script.py"
+                ),
+                number_of_workers=1,
+            )
+            lilota.start()
+
+            try:
+                # Act
+                id = lilota.schedule("write_to_stdout", {"line": line, "count": 1})
+                task = self.wait_for_task(lilota, id, [TaskStatus.COMPLETED])
+
+                # The worker is still running. The line must not wait in a buffer
+                # of the worker until that is full or the worker is stopped.
+                output = self.wait_for_text_in_file(stdout_path, line)
+            finally:
+                lilota.stop()
+
+        # Assert
+        self.assertEqual(task.status, TaskStatus.COMPLETED)
+        self.assertIn(line, output)
+
+    def test_schedule___task_writes_much_output_to_stderr___should_complete_task(self):
+        # Arrange
+        with redirect_stderr(io.StringIO()) as worker_stderr:
+            lilota = Lilota(
+                db_url=self.DB_URL,
+                script_path=str(
+                    Path(__file__).resolve().parent
+                    / "scripts"
+                    / "output_test_script.py"
+                ),
+                number_of_workers=1,
+                process_manager_interval=0.1,
+            )
+            lilota.start()
+
+            try:
+                # Act
+                id = lilota.schedule(
+                    "write_to_stderr",
+                    {"line": OUTPUT_LINE, "count": MORE_LINES_THAN_A_PIPE_HOLDS},
+                )
+                task = self.wait_for_task(lilota, id, [TaskStatus.COMPLETED])
+
+                # Give the process manager the time to react to the output
+                self.sleep(0.5)
+                has_failed = lilota.has_failed()
+                running_processes = [
+                    process
+                    for process in lilota._process_manager._processes
+                    if process.proc.poll() is None
+                ]
+            finally:
+                lilota.stop()
+
+        # Assert
+        self.assertEqual(
+            task.status,
+            TaskStatus.COMPLETED,
+            "The worker hangs because nobody reads what it writes to stderr",
+        )
+        self.assertFalse(has_failed, "Writing to stderr is not an error")
+        self.assertEqual(len(running_processes), 1)
+        self.assertEqual(
+            worker_stderr.getvalue().count(OUTPUT_LINE), MORE_LINES_THAN_A_PIPE_HOLDS
+        )
+
+    def test_schedule___task_raises_exception___should_keep_workers_running_and_execute_next_task(
+        self,
+    ):
+        # Arrange
+        number_of_workers = 2
+        lilota = Lilota(
+            db_url=self.DB_URL,
+            script_path=str(
+                Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"
+            ),
+            number_of_workers=number_of_workers,
+            process_manager_interval=0.1,
+        )
+        lilota.start()
+
+        try:
+            # Act
+            failed_id = lilota.schedule("add_with_exception", AddInput(a=1, b=2))
+            failed_task = self.wait_for_task(lilota, failed_id, [TaskStatus.FAILED])
+            self.assertEqual(failed_task.status, TaskStatus.FAILED)
+
+            # Give the process manager the time to react to the task that raised
+            self.sleep(2)
+
+            # Assert
+            self.assertFalse(
+                lilota.has_failed(),
+                "A task that raises an exception must not be a fatal error for lilota",
+            )
+            running_processes = [
+                process
+                for process in lilota._process_manager._processes
+                if process.proc.poll() is None
+            ]
+            self.assertEqual(len(running_processes), number_of_workers)
+
+            id = lilota.schedule("add", AddInput(a=1, b=2))
+            task = self.wait_for_task(lilota, id, [TaskStatus.COMPLETED])
+            self.assertEqual(task.status, TaskStatus.COMPLETED)
+            self.assertEqual(task.output, {"sum": 3})
+        finally:
+            lilota.stop()
+
+    def test_schedule___task_raises_exception_and_has_attempts_left___should_retry_task(
+        self,
+    ):
+        # Arrange
+        lilota = Lilota(
+            db_url=self.DB_URL,
+            script_path=str(
+                Path(__file__).resolve().parent / "scripts" / "retry_test_script.py"
+            ),
+            number_of_workers=1,
+            process_manager_interval=0.1,
+        )
+        lilota.start()
+
+        try:
+            # Act
+            id = lilota.schedule("always_failing")
+
+            # Assert
+            retry_task = self.wait_for_retry_of_task(id)
+            self.assertIsNotNone(
+                retry_task,
+                "The task failed and has attempts left, but it was not retried",
+            )
+            self.assertEqual(retry_task.name, "always_failing")
+            self.assertEqual(retry_task.attempts, 2)
+            self.assertEqual(retry_task.max_attempts, 3)
+        finally:
+            lilota.stop()
+
+    def test_schedule___task_raises_exception_and_has_no_attempts_left___should_not_retry_task(
+        self,
+    ):
+        # Arrange
+        lilota = Lilota(
+            db_url=self.DB_URL,
+            script_path=str(
+                Path(__file__).resolve().parent / "scripts" / "retry_test_script.py"
+            ),
+            number_of_workers=1,
+            process_manager_interval=0.1,
+        )
+        lilota.start()
+
+        try:
+            # Act
+            id = lilota.schedule("always_failing_with_default_max_attempts")
+            task = self.wait_for_task(lilota, id, [TaskStatus.FAILED])
+
+            # Give the worker the time to retry the task. It looks for tasks to retry
+            # with every heartbeat, which is every 0.5 seconds in this script.
+            self.sleep(2)
+
+            # Assert
+            self.assertEqual(task.status, TaskStatus.FAILED)
+            self.assertEqual(task.attempts, 1)
+            self.assertEqual(task.max_attempts, 1)
+
+            with LilotaTestCase.get_session() as session:
+                tasks = session.query(Task).all()
+                self.assertEqual(
+                    len(tasks),
+                    1,
+                    "A task with max_attempts=1 must be executed only once",
+                )
+                self.assertIsNone(tasks[0].retried_at)
+        finally:
+            lilota.stop()
+
+    def test_timeout___when_worker_has_written_to_stderr___should_restart_worker(self):
+        # Arrange
+        with redirect_stderr(io.StringIO()):
+            lilota = Lilota(
+                db_url=self.DB_URL,
+                script_path=str(
+                    Path(__file__).resolve().parent
+                    / "scripts"
+                    / "killed_worker_test_script.py"
+                ),
+                number_of_workers=1,
+                process_manager_interval=0.1,
+            )
+            lilota.start()
+
+            try:
+                process_id = lilota._process_manager._processes[0].id
+                warning_id = lilota.schedule("write_warning")
+                warning_task = self.wait_for_task(
+                    lilota, warning_id, [TaskStatus.COMPLETED]
+                )
+
+                # Act: the worker stops itself because the task expires
+                lilota.schedule("infinite_loop")
+                is_restarted = self.wait_for_restart_of_worker(lilota, process_id)
+                error = lilota.error
+
+                next_id = lilota.schedule("write_warning")
+                next_task = self.wait_for_task(lilota, next_id, [TaskStatus.COMPLETED])
+            finally:
+                lilota.stop()
+
+        # Assert
+        self.assertEqual(warning_task.status, TaskStatus.COMPLETED)
+        self.assertIsNone(
+            error,
+            "A worker that is stopped because of an expired task must be restarted, "
+            "whatever it has written to stderr before",
+        )
+        self.assertTrue(is_restarted)
+        self.assertEqual(next_task.status, TaskStatus.COMPLETED)
+
+    def test_kill___when_worker_has_written_to_stderr___should_restart_worker(self):
+        # Arrange
+        with redirect_stderr(io.StringIO()):
+            lilota = Lilota(
+                db_url=self.DB_URL,
+                script_path=str(
+                    Path(__file__).resolve().parent
+                    / "scripts"
+                    / "killed_worker_test_script.py"
+                ),
+                number_of_workers=1,
+                process_manager_interval=0.1,
+            )
+            lilota.start()
+
+            try:
+                process = lilota._process_manager._processes[0]
+                warning_id = lilota.schedule("write_warning")
+                warning_task = self.wait_for_task(
+                    lilota, warning_id, [TaskStatus.COMPLETED]
+                )
+
+                # Act: the worker is killed from the outside
+                os.kill(process.proc.pid, signal.SIGKILL)
+                is_restarted = self.wait_for_restart_of_worker(lilota, process.id)
+                error = lilota.error
+
+                next_id = lilota.schedule("write_warning")
+                next_task = self.wait_for_task(lilota, next_id, [TaskStatus.COMPLETED])
+            finally:
+                lilota.stop()
+
+        # Assert
+        self.assertEqual(warning_task.status, TaskStatus.COMPLETED)
+        self.assertIsNone(
+            error,
+            "A worker that is killed must be restarted, whatever it has written to "
+            "stderr before",
+        )
+        self.assertTrue(is_restarted)
+        self.assertEqual(next_task.status, TaskStatus.COMPLETED)
+
     def sleep(self, seconds: float = 0.3):
         time.sleep(seconds)
+
+    def wait_for_restart_of_worker(
+        self, lilota: Lilota, process_id: UUID, timeout: float = 10
+    ) -> bool:
+        """Wait until the worker process was replaced by a new one that is running.
+
+        Returns False if lilota fails instead, or after the timeout.
+        """
+        deadline = time.monotonic() + timeout
+
+        while True:
+            if lilota.has_failed() or time.monotonic() >= deadline:
+                return False
+
+            processes = list(lilota._process_manager._processes)
+            if (
+                len(processes) == 1
+                and processes[0].id != process_id
+                and processes[0].proc.poll() is None
+            ):
+                return True
+
+            self.sleep(0.1)
+
+    def wait_for_task(
+        self, lilota: Lilota, id: UUID, statuses: list[TaskStatus], timeout: float = 10
+    ) -> Task:
+        """Wait until the task has one of the statuses and return it.
+
+        After the timeout the task is returned as it is, so the caller can assert on
+        the status it actually has.
+        """
+        deadline = time.monotonic() + timeout
+
+        while True:
+            task = lilota.get_task_by_id(id)
+            if task.status in statuses or time.monotonic() >= deadline:
+                return task
+            self.sleep(0.1)
+
+    @contextmanager
+    def worker_stdout_in_file(self):
+        """Let worker processes write their stdout into a file, and yield its path.
+
+        A worker writes to the stdout of the process that started it, which is this
+        test run. The stdout is replaced on the level of the file descriptor, because
+        that is what a worker process inherits. contextlib.redirect_stdout would only
+        replace sys.stdout of this process.
+
+        Workers have to be started inside the block. The file is deleted when the
+        block ends.
+        """
+        stdout_file_descriptor = 1
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "stdout.txt"
+            sys.stdout.flush()
+            original_stdout = os.dup(stdout_file_descriptor)
+
+            with open(path, "w") as file:
+                os.dup2(file.fileno(), stdout_file_descriptor)
+
+            try:
+                yield path
+            finally:
+                sys.stdout.flush()
+                os.dup2(original_stdout, stdout_file_descriptor)
+                os.close(original_stdout)
+
+    def wait_for_text_in_file(self, path: Path, text: str, timeout: float = 5) -> str:
+        """Wait until the file contains the text and return the content of the file.
+
+        After the timeout the content is returned as it is.
+        """
+        deadline = time.monotonic() + timeout
+
+        while True:
+            content = path.read_text()
+            if text in content or time.monotonic() >= deadline:
+                return content
+            self.sleep(0.1)
+
+    def wait_for_retry_of_task(self, id: UUID, timeout: float = 10) -> Task | None:
+        """Wait until the task was retried and return the retry, or None after the timeout."""
+        deadline = time.monotonic() + timeout
+
+        while True:
+            with LilotaTestCase.get_session() as session:
+                retry_task = (
+                    session.query(Task).filter(Task.previous_task_id == id).first()
+                )
+            if retry_task is not None or time.monotonic() >= deadline:
+                return retry_task
+            self.sleep(0.1)
 
     def wait(self, lilota: Lilota) -> None:
         max = 60
@@ -803,6 +1223,75 @@ class LilotaTestCase(TestCase):
 
             if lilota.has_failed():
                 raise Exception(lilota.error)
+
+
+class WorkerErrorOutputTestCase(TestCase):
+    def read_error_output(self, code: str) -> tuple[str, str]:
+        """Run the code in a Python process and read its stderr with a WorkerErrorOutput.
+
+        Returns what the WorkerErrorOutput kept and what it passed on to sys.stderr.
+        """
+        proc = subprocess.Popen(
+            [sys.executable, "-c", code], stderr=subprocess.PIPE, text=True
+        )
+
+        with redirect_stderr(io.StringIO()) as passed_on:
+            error_output = WorkerErrorOutput(proc)
+            error_output.start()
+            proc.wait()
+            text = error_output.text()
+
+        return text, passed_on.getvalue()
+
+    def test_text___process_writes_nothing___should_return_empty_string(self):
+        # Act
+        text, passed_on = self.read_error_output("pass")
+
+        # Assert
+        self.assertEqual(text, "")
+        self.assertEqual(passed_on, "")
+
+    def test_text___process_fails_with_exception___should_return_traceback(self):
+        # Act
+        text, passed_on = self.read_error_output("raise Exception('Error in script')")
+
+        # Assert
+        self.assertTrue(text.startswith("Traceback (most recent call last):"))
+        self.assertTrue(text.endswith("Exception: Error in script\n"))
+        self.assertEqual(passed_on, text)
+
+    def test_text___process_writes_more_lines_than_are_kept___should_return_last_lines(
+        self,
+    ):
+        # Arrange
+        number_of_lines = WorkerErrorOutput.MAX_LINES + 50
+
+        # Act
+        text, passed_on = self.read_error_output(
+            "import sys\n"
+            f"for i in range({number_of_lines}): print('line', i, file=sys.stderr)"
+        )
+
+        # Assert
+        lines = text.splitlines()
+        self.assertEqual(len(lines), WorkerErrorOutput.MAX_LINES)
+        self.assertEqual(lines[0], "line 50")
+        self.assertEqual(lines[-1], f"line {number_of_lines - 1}")
+        self.assertEqual(len(passed_on.splitlines()), number_of_lines)
+
+    def test_text___process_writes_one_endless_line___should_keep_limited_text(self):
+        # Arrange
+        maximum = WorkerErrorOutput.MAX_LINES * WorkerErrorOutput.MAX_LINE_LENGTH
+        length = maximum + 10 * WorkerErrorOutput.MAX_LINE_LENGTH
+
+        # Act
+        text, passed_on = self.read_error_output(
+            f"import sys\nsys.stderr.write('x' * {length})"
+        )
+
+        # Assert
+        self.assertEqual(len(text), maximum)
+        self.assertEqual(len(passed_on), length)
 
 
 if __name__ == "__main__":

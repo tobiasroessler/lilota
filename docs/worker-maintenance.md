@@ -40,6 +40,16 @@ This prevents tasks from running indefinitely and ensures system stability.
 More information can be found [here](https://tobiasroessler.github.io/lilota/task-timeout).
 
 
+### 3. Retry of Tasks
+
+Tasks that have failed or expired are retried if they have attempts left.
+
+* The task store looks for **failed** and **expired** tasks that were not retried yet
+* For each of them a new task is created that is executed after a delay
+
+More information can be found [here](https://tobiasroessler.github.io/lilota/retry-mechanism).
+
+
 ## Fault Tolerance
 
 Maintenance execution is designed to be safe and resilient:

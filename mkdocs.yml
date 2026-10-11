@@ -18,5 +18,6 @@ nav:
     - Shutdown: shutdown.md
     - Database: database.md
     - Error handling: error-handling.md
+    - Worker output: worker-output.md
   - Reference:
     - Lilota: lilota-reference.md

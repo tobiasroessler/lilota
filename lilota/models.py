@@ -298,7 +298,9 @@ class Task(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
-    attempts: Mapped[int] = mapped_column(nullable=False, default=0)
+    # Which execution of the task this is. A task that is scheduled is the first
+    # attempt, and every retry is a new task that counts one further.
+    attempts: Mapped[int] = mapped_column(nullable=False, default=1)
     max_attempts: Mapped[int] = mapped_column(nullable=False, default=1)
     retried_at: Mapped[datetime | None] = mapped_column(
         UtcDateTime(), nullable=True, default=None, index=True

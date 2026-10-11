@@ -79,10 +79,12 @@ This table stores information about the tasks executed by the system.
 | `id`                  | Unique identifier of the task (UUID).                                                               |
 | `name`                | Name of the registered task function to execute.                                                    |
 | `pid`                 | Process identifier associated with the task execution.                                              |
-| `status`              | Current status of the task (`created`, `scheduled`, `running`, `completed`, `failed`, `cancelled`). |
+| `status`              | Current status of the task (`created`, `scheduled`, `running`, `completed`, `failed`, `expired`, `cancelled`). |
 | `run_at`              | Timestamp indicating when the task becomes eligible for execution.                                  |
-| `attempts`            | Number of execution attempts made for this task.                                                    |
-| `max_attempts`        | Maximum allowed retry attempts before the task is marked as failed.                                 |
+| `attempts`            | Which attempt this task is: 1 for a task that was scheduled, 2 for its first retry, and so on.      |
+| `max_attempts`        | How often the task is executed at most. The first execution counts.                                 |
+| `retried_at`          | Timestamp when a retry was created for this task. Empty if the task was not retried.                |
+| `previous_task_id`    | For a retry: identifier of the task it retries. Empty for a task that was scheduled.                |
 | `timeout`             | Maximum execution duration allowed for the task before it should be considered timed out.           |
 | `expires_at`          | Optional timestamp (UTC) after which the task is considered expired and should no longer be executed.          |
 | `progress_percentage` | Current progress of the task expressed as a percentage (0–100).                                     |

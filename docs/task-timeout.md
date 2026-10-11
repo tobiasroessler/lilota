@@ -24,3 +24,5 @@ worker = LilotaWorker(
 
 The default timeout is **5 minutes**. This can be adjusted using Python’s **timedelta** object.
 If **None** is specified, the timeout is disabled.
+
+The worker process that was stopped is replaced by a new one, so the tasks that are waiting are still executed. The expired task is retried if it has attempts left. See [Retry mechanism](retry-mechanism.md).

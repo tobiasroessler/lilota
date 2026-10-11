@@ -4,10 +4,31 @@ In **Lilota**, external code is executed. Errors that occur in the executed scri
 
 If an error cannot be caught by the worker, or if an exception stops parts of Lilota and leaves the system in an inconsistent state, this is reflected in the error property of the Lilota class. This property returns the last fatal error encountered by the system that was not handled by a worker.
 
+If a worker process fails, the error is the last lines the process has written to **stderr**, which usually is the traceback of the exception. The same lines are shown in the output of your application. See [Worker output](worker-output.md).
+
 The Lilota class also provides two methods to:
 
 Check whether a fatal error has occurred (**has_failed**)
 Wait until a fatal error occurs (**wait_for_failure**), which blocks execution
+
+## A task raises an exception
+
+This is an error the worker handles. It is not a fatal error.
+
+The worker stores the exception in the **error** column of the task and sets the status of the task to **failed**. Then it goes on with the next task. If the task has attempts left, it is retried. See [Retry mechanism](retry-mechanism.md).
+
+## A worker is killed
+
+A worker process that is killed is replaced by a new one. This is not a fatal error either. It happens when
+
+* a task runs longer than its timeout. The worker stops itself, because that is the only way to end the task. See [Task timeout](task-timeout.md).
+* the process is terminated by a signal, for example by the operating system because it used too much memory.
+
+The task the worker was executing is retried once its timeout has passed, if it has attempts left.
+
+## Worker script fails
+
+If the worker script itself ends with an error, for example because of an exception while it is imported, starting it again would fail the same way. **Lilota** stops all workers and reports a fatal error. The error is what the process has written to **stderr**.
 
 ## Worker script does not start a worker
 
