@@ -23,12 +23,18 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
+# Only the lilota package. Every other folder with an __init__.py, like sample and
+# tests, would be installed as a package of its own.
 [tool.setuptools.packages.find]
 where = ["."]
-exclude = ["tests*"]
+include = ["lilota*"]
 
 [tool.setuptools.package-data]
 "lilota" = ["db/migrations/**", "db/migrations/**/**"]
+
+# The compiled files that Python leaves behind when the migrations have run
+[tool.setuptools.exclude-package-data]
+"*" = ["*.pyc"]
 
 [dependency-groups]
 dev = [
