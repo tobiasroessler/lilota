@@ -4,6 +4,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from contextlib import contextmanager, redirect_stderr
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 import io
 import logging
 import select
@@ -16,9 +17,17 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from lilota.constants import DEFAULT_TEST_DB_URL
 from lilota.core import Lilota, LilotaMode, ManagedProcess, WorkerErrorOutput
-from lilota.models import Node, NodeLeader, Task, TaskStatus, LogEntry, NodeType
+from lilota.models import (
+    Node,
+    NodeLeader,
+    NodeStatus,
+    Task,
+    TaskStatus,
+    LogEntry,
+    NodeType,
+)
 from lilota.db.alembic import upgrade_db
-from lilota.stores import LogStore
+from lilota.stores import LogStore, TaskStore
 from lilota.worker import LilotaWorker
 from pathlib import Path
 import time
@@ -1222,6 +1231,121 @@ class LilotaTestCase(TestCase):
             "process that started it has ended",
         )
 
+    def test_dead_worker___when_task_was_taken_and_not_started___should_execute_task(
+        self,
+    ):
+        # Arrange: a worker has taken a task and has died before it started the task
+        dead_worker_id = self.create_dead_worker()
+        store = TaskStore(self.DB_URL, None)
+        task_id = store.create_task("with_timeout")
+        store.get_next_task(dead_worker_id)
+        task_of_dead_worker = store.get_task_by_id(task_id)
+
+        # Act: a worker that is alive
+        lilota = Lilota(
+            db_url=self.DB_URL,
+            script_path=str(
+                Path(__file__).resolve().parent
+                / "scripts"
+                / "dead_worker_test_script.py"
+            ),
+            number_of_workers=1,
+        )
+        lilota.start()
+
+        try:
+            completed_task = self.wait_for_completed_task("with_timeout")
+            task = store.get_task_by_id(task_id)
+        finally:
+            lilota.stop()
+
+        # Assert
+        self.assertEqual(task_of_dead_worker.status, TaskStatus.SCHEDULED)
+        self.assertEqual(task_of_dead_worker.locked_by, dead_worker_id)
+        self.assertIsNotNone(
+            completed_task,
+            "A task that a dead worker has taken must be executed by another worker. "
+            f"The task still has the status '{task.status}'",
+        )
+
+    def test_dead_worker___when_task_without_timeout_was_running___should_execute_task(
+        self,
+    ):
+        # Arrange: a worker has died while it was executing a task that has no timeout
+        dead_worker_id = self.create_dead_worker()
+        store = TaskStore(self.DB_URL, None)
+        task_id = store.create_task("without_timeout")
+        store.get_next_task(dead_worker_id)
+        store.start_task(task_id, max_attempts=1, timeout=None)
+        task_of_dead_worker = store.get_task_by_id(task_id)
+
+        # Act: a worker that is alive
+        lilota = Lilota(
+            db_url=self.DB_URL,
+            script_path=str(
+                Path(__file__).resolve().parent
+                / "scripts"
+                / "dead_worker_test_script.py"
+            ),
+            number_of_workers=1,
+        )
+        lilota.start()
+
+        try:
+            completed_task = self.wait_for_completed_task("without_timeout")
+            task = store.get_task_by_id(task_id)
+        finally:
+            lilota.stop()
+
+        # Assert
+        self.assertEqual(task_of_dead_worker.status, TaskStatus.RUNNING)
+        self.assertIsNone(task_of_dead_worker.expires_at)
+        self.assertIsNotNone(
+            completed_task,
+            "A task that a dead worker was executing must be executed by another "
+            f"worker. The task still has the status '{task.status}'",
+        )
+
+    def test_dead_worker___when_task_with_timeout_was_running___should_execute_task(
+        self,
+    ):
+        # Arrange: a worker has died while it was executing a task. The task has the
+        # default of one attempt, and its timeout of 5 minutes has not passed.
+        dead_worker_id = self.create_dead_worker()
+        store = TaskStore(self.DB_URL, None)
+        task_id = store.create_task("with_timeout")
+        store.get_next_task(dead_worker_id)
+        store.start_task(task_id, max_attempts=1, timeout=timedelta(minutes=5))
+        task_of_dead_worker = store.get_task_by_id(task_id)
+
+        # Act: a worker that is alive
+        lilota = Lilota(
+            db_url=self.DB_URL,
+            script_path=str(
+                Path(__file__).resolve().parent
+                / "scripts"
+                / "dead_worker_test_script.py"
+            ),
+            number_of_workers=1,
+        )
+        lilota.start()
+
+        try:
+            completed_task = self.wait_for_completed_task("with_timeout")
+            task = store.get_task_by_id(task_id)
+        finally:
+            lilota.stop()
+
+        # Assert
+        self.assertEqual(task_of_dead_worker.status, TaskStatus.RUNNING)
+        self.assertIsNotNone(task_of_dead_worker.expires_at)
+        self.assertIsNotNone(
+            completed_task,
+            "A task that a dead worker was executing must be executed by another "
+            "worker, without waiting for its timeout and even if it has no attempts "
+            f"left. The task still has the status '{task.status}'",
+        )
+
     def sleep(self, seconds: float = 0.3):
         time.sleep(seconds)
 
@@ -1317,6 +1441,41 @@ class LilotaTestCase(TestCase):
                 )
             if retry_task is not None or time.monotonic() >= deadline:
                 return retry_task
+            self.sleep(0.1)
+
+    def create_dead_worker(self) -> UUID:
+        """Create the node of a worker that has died, and return its ID.
+
+        The process of such a worker is gone, so its node was not seen for a long
+        time. Its status is still "running": nobody was there to change it.
+        """
+        with LilotaTestCase.get_session() as session:
+            node = Node(
+                type=NodeType.WORKER,
+                status=NodeStatus.RUNNING,
+                last_seen_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            )
+            session.add(node)
+            session.commit()
+            return node.id
+
+    def wait_for_completed_task(self, name: str, timeout: float = 15) -> Task | None:
+        """Wait until a task with the name is completed and return it, or None after the timeout.
+
+        The completed task is the task that was scheduled or a retry of it. The
+        timeout is long enough for a retry, which starts after 5 seconds.
+        """
+        deadline = time.monotonic() + timeout
+
+        while True:
+            with LilotaTestCase.get_session() as session:
+                completed_task = (
+                    session.query(Task)
+                    .filter(Task.name == name, Task.status == TaskStatus.COMPLETED)
+                    .first()
+                )
+            if completed_task is not None or time.monotonic() >= deadline:
+                return completed_task
             self.sleep(0.1)
 
     @contextmanager

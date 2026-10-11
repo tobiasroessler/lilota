@@ -28,7 +28,30 @@ Workers that have not sent a heartbeat within a configured timeout are considere
 This ensures that inactive or crashed workers do not remain in an inconsistent state.
 
 
-### 2. Expiration of Overdue Tasks
+### 2. Tasks of Dead Nodes
+
+A worker that dies cannot finish the tasks it has taken, and no other worker takes a task that belongs to another worker. The leader therefore gives these tasks back.
+
+* The task store looks for tasks that were taken or are being executed by a worker that is dead
+* These tasks get the status **created** again, as if no worker had taken them
+* The next worker that is free executes them
+
+This is not counted as an attempt. The task is also executed again with the default **max_attempts** of 1.
+
+A worker counts as dead when it has not sent a heartbeat within the node timeout, which is 20 seconds by default (**node_timeout_sec**). A task of a dead worker is therefore executed again after about that time.
+
+The leader writes a warning to the **lilota_log** table:
+
+```
+Gave back 1 task(s) of dead node(s). They are executed again
+```
+
+> **Note:** A task that is given back was ended in the middle and is executed again from the beginning. What it has done before, it does twice. The same happens if a worker is taken for dead although it is only not reachable for longer than the node timeout: its task is then executed by a second worker as well.
+
+A task that has run into its timeout is not given back. It is handled as described in the next two sections.
+
+
+### 3. Expiration of Overdue Tasks
 
 Tasks that exceed their configured timeout are automatically marked as **expired**.
 
@@ -40,7 +63,7 @@ This prevents tasks from running indefinitely and ensures system stability.
 More information can be found [here](https://tobiasroessler.github.io/lilota/task-timeout).
 
 
-### 3. Retry of Tasks
+### 4. Retry of Tasks
 
 Tasks that have failed or expired are retried if they have attempts left.
 

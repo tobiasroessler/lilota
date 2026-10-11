@@ -92,6 +92,7 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
     def _run_maintenance(self) -> None:
         try:
             self._update_status_on_dead_nodes()
+            self._release_tasks_of_dead_nodes()
             self._update_status_on_expired_tasks()
             self._retry_tasks()
         except Exception:
@@ -103,6 +104,14 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
         cleaned = self._node_store.update_status_on_dead_nodes(cutoff, self._node_id)
         if cleaned > 0:
             self._logger.debug(f"Marked {cleaned} stale node(s) as DEAD")
+
+    def _release_tasks_of_dead_nodes(self):
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=self._node_timeout_sec)
+        released = self._task_store.release_tasks_of_dead_nodes(cutoff, self._node_id)
+        if released > 0:
+            self._logger.warning(
+                f"Gave back {released} task(s) of dead node(s). They are executed again"
+            )
 
     def _update_status_on_expired_tasks(self):
         self._task_store.expire_overdue_tasks()

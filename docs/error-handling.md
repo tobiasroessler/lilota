@@ -24,7 +24,10 @@ A worker process that is killed is replaced by a new one. This is not a fatal er
 * a task runs longer than its timeout. The worker stops itself, because that is the only way to end the task. See [Task timeout](task-timeout.md).
 * the process is terminated by a signal, for example by the operating system because it used too much memory.
 
-The task the worker was executing is retried once its timeout has passed, if it has attempts left.
+What happens to the task the worker was executing depends on why the worker was killed:
+
+* The task ran longer than its timeout: it gets the status **expired** and is retried if it has attempts left. See [Retry mechanism](retry-mechanism.md).
+* The process was terminated by a signal: the task is given back and executed again by another worker, about 20 seconds later. See [Worker maintenance](worker-maintenance.md).
 
 ## Worker script fails
 

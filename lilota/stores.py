@@ -226,6 +226,61 @@ class TaskStore(StoreBase):
                     .values(status=TaskStatus.EXPIRED)
                 )
 
+    def release_tasks_of_dead_nodes(
+        self, cutoff: datetime, exclude_node_id: UUID
+    ) -> int:
+        """Give back the tasks that were taken by a node that is dead.
+
+        A worker that dies cannot finish the tasks it has taken, and no other
+        worker takes a task that is locked. The tasks get the status "created"
+        again, as if no worker had taken them, so that the next worker that is
+        free executes them. This is not an attempt: ``attempts`` stays as it is.
+
+        A node is dead if it was not seen since the cutoff, which is the rule of
+        ``NodeStore.update_status_on_dead_nodes``, or if it does not exist. The
+        status of the node is not looked at, because a node that was taken for
+        dead and is seen again keeps the status DEAD.
+
+        A task that has run into its timeout is not given back. It has taken too
+        long, whatever happened to its worker, and is left to
+        ``expire_overdue_tasks`` and ``retry_tasks``.
+
+        Args:
+            cutoff (datetime): Time threshold to consider a node dead.
+            exclude_node_id (UUID): Node whose tasks are never given back.
+
+        Returns:
+            int: Number of tasks that were given back.
+        """
+        nodes_alive = select(Node.id).where(
+            or_(Node.last_seen_at >= cutoff, Node.id == exclude_node_id)
+        )
+
+        with self._get_session() as session:
+            with session.begin():
+                result = session.execute(
+                    update(Task)
+                    .where(
+                        Task.status.in_([TaskStatus.SCHEDULED, TaskStatus.RUNNING]),
+                        Task.locked_by.is_not(None),
+                        Task.locked_by.not_in(nodes_alive),
+                        or_(
+                            Task.expires_at.is_(None),
+                            Task.expires_at >= datetime.now(timezone.utc),
+                        ),
+                    )
+                    .values(
+                        status=TaskStatus.CREATED,
+                        pid=0,
+                        progress_percentage=0,
+                        start_date_time=None,
+                        expires_at=None,
+                        locked_by=None,
+                        locked_at=None,
+                    )
+                )
+                return result.rowcount
+
     def has_unfinished_tasks(self) -> bool:
         """Check if there are any unfinished tasks in the database."""
         with self._get_session() as session:

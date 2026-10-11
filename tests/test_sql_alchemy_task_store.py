@@ -9,7 +9,7 @@ from unittest import TestCase, main
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from lilota.constants import DEFAULT_TEST_DB_URL
-from lilota.models import Task, TaskProgress, TaskStatus
+from lilota.models import Node, NodeStatus, NodeType, Task, TaskProgress, TaskStatus
 from lilota.db.alembic import upgrade_db
 from lilota.stores import TaskStore
 
@@ -32,6 +32,7 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
 
     def setUp(self):
         self.delete_all_tasks()
+        self.delete_all_nodes()
 
     def test_get_next_task___with_no_tasks___should_return_none(self):
         # Arrange
@@ -493,6 +494,127 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
             )
             self.assertEqual(len(retry_tasks), 2)
 
+    def test_release_tasks_of_dead_nodes___with_task_of_dead_node___should_set_status_created(
+        self,
+    ):
+        # Arrange: a worker has started a task and was not seen for an hour
+        now = datetime.now(timezone.utc)
+        dead_node_id = self.create_node(last_seen_at=now - timedelta(hours=1))
+        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, None)
+        task_id = store.create_task("test")
+        store.get_next_task(dead_node_id)
+        store.start_task(task_id, max_attempts=1, timeout=timedelta(minutes=5))
+        store.set_progress(task_id, 40)
+
+        # Act
+        released = store.release_tasks_of_dead_nodes(
+            cutoff=now - timedelta(seconds=20), exclude_node_id=uuid4()
+        )
+
+        # Assert
+        task = store.get_task_by_id(task_id)
+        self.assertEqual(released, 1)
+        self.assertEqual(task.status, TaskStatus.CREATED)
+        self.assertIsNone(task.locked_by)
+        self.assertIsNone(task.locked_at)
+        self.assertIsNone(task.start_date_time)
+        self.assertIsNone(task.expires_at)
+        self.assertEqual(task.progress_percentage, 0)
+        self.assertEqual(task.attempts, 1)
+
+    def test_release_tasks_of_dead_nodes___with_task_of_node_that_does_not_exist___should_set_status_created(
+        self,
+    ):
+        # Arrange: the task is locked by a node of which there is no row
+        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, None)
+        task_id = store.create_task("test")
+        store.get_next_task(uuid4())
+
+        # Act
+        released = store.release_tasks_of_dead_nodes(
+            cutoff=datetime.now(timezone.utc) - timedelta(seconds=20),
+            exclude_node_id=uuid4(),
+        )
+
+        # Assert
+        task = store.get_task_by_id(task_id)
+        self.assertEqual(released, 1)
+        self.assertEqual(task.status, TaskStatus.CREATED)
+        self.assertIsNone(task.locked_by)
+
+    def test_release_tasks_of_dead_nodes___with_task_of_node_that_is_alive___should_not_change_task(
+        self,
+    ):
+        # Arrange: the worker that is executing the task was seen a moment ago
+        now = datetime.now(timezone.utc)
+        node_id = self.create_node(last_seen_at=now)
+        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, None)
+        task_id = store.create_task("test")
+        store.get_next_task(node_id)
+        store.start_task(task_id, max_attempts=1)
+
+        # Act
+        released = store.release_tasks_of_dead_nodes(
+            cutoff=now - timedelta(seconds=20), exclude_node_id=uuid4()
+        )
+
+        # Assert
+        task = store.get_task_by_id(task_id)
+        self.assertEqual(released, 0)
+        self.assertEqual(task.status, TaskStatus.RUNNING)
+        self.assertEqual(task.locked_by, node_id)
+
+    def test_release_tasks_of_dead_nodes___with_task_of_excluded_node___should_not_change_task(
+        self,
+    ):
+        # Arrange: the node that looks for dead nodes never takes itself for dead
+        now = datetime.now(timezone.utc)
+        node_id = self.create_node(last_seen_at=now - timedelta(hours=1))
+        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, None)
+        task_id = store.create_task("test")
+        store.get_next_task(node_id)
+        store.start_task(task_id, max_attempts=1)
+
+        # Act
+        released = store.release_tasks_of_dead_nodes(
+            cutoff=now - timedelta(seconds=20), exclude_node_id=node_id
+        )
+
+        # Assert
+        task = store.get_task_by_id(task_id)
+        self.assertEqual(released, 0)
+        self.assertEqual(task.status, TaskStatus.RUNNING)
+        self.assertEqual(task.locked_by, node_id)
+
+    def test_release_tasks_of_dead_nodes___with_task_that_has_run_into_its_timeout___should_not_change_task(
+        self,
+    ):
+        # Arrange: a worker that stops itself because its task has expired leaves the
+        # task like this. The task took too long. It must not be executed again
+        # without a look at its attempts.
+        now = datetime.now(timezone.utc)
+        dead_node_id = self.create_node(last_seen_at=now - timedelta(hours=1))
+        task_id = self.create_task(
+            Task(
+                name="test",
+                status=TaskStatus.RUNNING,
+                locked_by=dead_node_id,
+                expires_at=now - timedelta(seconds=10),
+            )
+        )
+        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, None)
+
+        # Act
+        released = store.release_tasks_of_dead_nodes(
+            cutoff=now - timedelta(seconds=20), exclude_node_id=uuid4()
+        )
+
+        # Assert
+        task = store.get_task_by_id(task_id)
+        self.assertEqual(released, 0)
+        self.assertEqual(task.status, TaskStatus.RUNNING)
+        self.assertEqual(task.locked_by, dead_node_id)
+
     def delete_all_tasks(self):
         with SqlAlchemyTaskStoreTestCase.get_session() as session:
             session.query(Task).delete()
@@ -503,6 +625,22 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
             session.add(task)
             session.commit()
             return task.id
+
+    def delete_all_nodes(self):
+        with SqlAlchemyTaskStoreTestCase.get_session() as session:
+            session.query(Node).delete()
+            session.commit()
+
+    def create_node(self, last_seen_at: datetime):
+        with SqlAlchemyTaskStoreTestCase.get_session() as session:
+            node = Node(
+                type=NodeType.WORKER,
+                status=NodeStatus.RUNNING,
+                last_seen_at=last_seen_at,
+            )
+            session.add(node)
+            session.commit()
+            return node.id
 
 
 if __name__ == "__main__":
