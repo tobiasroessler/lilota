@@ -1,7 +1,11 @@
 import atexit
 from collections import deque
 from enum import Enum
-from lilota.constants import DEFAULT_DB_URL, WORKER_EXIT_CODE_TASK_EXPIRED
+from lilota.constants import (
+    DEFAULT_DB_URL,
+    WORKER_EXIT_CODE_TASK_EXPIRED,
+    WORKER_PARENT_PID_ENV,
+)
 from lilota.heartbeat import Heartbeat, HeartbeatTask
 from lilota.models import Node
 from lilota.scheduler import LilotaScheduler
@@ -123,6 +127,10 @@ class ProcessManager:
         process. What it writes to stderr is read by a ``WorkerErrorOutput``,
         which passes it on to the stderr of the current process.
 
+        The process is told the ID of the current process, so that a worker
+        stops itself when the current process is gone (see
+        ``ParentProcessTask`` in ``lilota.worker``).
+
         Args:
           script_path (str): Path to the Python script to execute.
 
@@ -140,6 +148,9 @@ class ProcessManager:
             stderr=subprocess.PIPE,
             text=True,
             errors="replace",
+            # Nothing in this process can stop the workers if it is killed. They have
+            # to notice on their own that it is gone.
+            env={**os.environ, WORKER_PARENT_PID_ENV: str(os.getpid())},
             preexec_fn=os.setsid if os.name != "nt" else None,
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
         )

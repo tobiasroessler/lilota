@@ -1,14 +1,20 @@
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Type, Optional, Any, get_type_hints
-from lilota.constants import DEFAULT_DB_URL, WORKER_EXIT_CODE_TASK_EXPIRED
+from lilota.constants import (
+    DEFAULT_DB_URL,
+    WORKER_EXIT_CODE_TASK_EXPIRED,
+    WORKER_PARENT_CHECK_INTERVAL,
+    WORKER_PARENT_PID_ENV,
+)
 from lilota.node import LilotaNode, NodeHeartbeatTask
 from lilota.models import NodeType, Task, TaskProgress, RegisteredTask, TaskContext
 from lilota.logging import create_context_logger
 from lilota.stores import NodeStore, NodeLeaderStore, TaskStore
-from lilota.heartbeat import Heartbeat
+from lilota.heartbeat import Heartbeat, HeartbeatTask
 from lilota.utils import exception_to_dict, error_to_dict
 import logging
 import os
+import signal
 import threading
 import time
 import inspect
@@ -103,6 +109,39 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
 
     def _retry_tasks(self):
         self._task_store.retry_tasks()
+
+
+class ParentProcessTask(HeartbeatTask):
+    """Heartbeat task that notices when the process that started the worker is gone.
+
+    A worker process is started by an application and stopped by it, with
+    ``Lilota.stop()`` or when the application exits. An application that is killed,
+    that crashes or that is terminated without handling the signal stops nothing.
+    Its workers would run on without it and keep taking tasks.
+
+    The operating system gives a process whose parent has ended a new parent. This
+    task therefore compares the parent of the worker process with the process that
+    started it.
+    """
+
+    def __init__(
+        self, interval: float, parent_pid: int, on_parent_gone: Callable[[], None]
+    ):
+        """Initialize the task.
+
+        Args:
+          interval (float): Interval in seconds between the checks.
+          parent_pid (int): ID of the process that started the worker process.
+          on_parent_gone (Callable[[], None]): Called when that process is gone.
+        """
+        super().__init__(interval, None)
+        self._parent_pid = parent_pid
+        self._on_parent_gone = on_parent_gone
+
+    def execute(self):
+        """Check whether the worker process still has the parent that started it."""
+        if os.getppid() != self._parent_pid:
+            self._on_parent_gone()
 
 
 class LilotaWorker(LilotaNode):
@@ -282,6 +321,9 @@ class LilotaWorker(LilotaNode):
         return decorator
 
     def _on_started(self):
+        # Stop this process when the application that started it is gone
+        self._watch_parent_process()
+
         # Create node leader store
         node_leader_store = NodeLeaderStore(
             self._db_url, self._logger, self._node_timeout_sec
@@ -308,6 +350,43 @@ class LilotaWorker(LilotaNode):
 
         # Execute tasks
         self._execute_tasks()
+
+    def _watch_parent_process(self):
+        # Only a worker process that was started by the process manager is told which
+        # process started it. A worker script that is started on its own is not
+        # watched. The variable is removed, so that a process started by a task does
+        # not take it for its own.
+        parent_pid = os.environ.pop(WORKER_PARENT_PID_ENV, None)
+
+        # On Windows os.getppid() does not change when the parent has ended
+        if parent_pid is None or os.name == "nt":
+            return
+
+        # The thread is not stopped. It belongs to the process, not to the node.
+        parent_process_task = ParentProcessTask(
+            WORKER_PARENT_CHECK_INTERVAL, int(parent_pid), self._stop_orphaned_process
+        )
+        Heartbeat(
+            f"worker_parent_{self._node_id}", parent_process_task, self._logger
+        ).start()
+
+    def _stop_orphaned_process(self):
+        try:
+            self._logger.warning(
+                "The worker stops because the process that started it is gone"
+            )
+        except Exception:
+            # The worker has to stop even if the log entry cannot be written
+            pass
+
+        # Stop the way the process manager stops a worker: with SIGTERM to its process
+        # group, which also ends the processes that a task has started. Only if the
+        # worker leads the group. Otherwise the group belongs to someone else.
+        if os.getpgrp() == os.getpid():
+            os.killpg(os.getpgrp(), signal.SIGTERM)
+
+        # Still running: the worker does not lead a group, or it handles SIGTERM
+        os._exit(1)
 
     def _execute_tasks(self):
         interval: float = self._task_heartbeat_interval

@@ -20,3 +20,13 @@ LEGACY_VERSION_TABLE = "alembic_version"
 # one is to be restarted. 75 is EX_TEMPFAIL in sysexits.h: a failure that is worth
 # another try.
 WORKER_EXIT_CODE_TASK_EXPIRED = 75
+
+# The environment variable in which the process manager tells a worker process the ID
+# of the process that started it. With it the worker notices when that process is gone
+# and stops itself. A worker script that is started on its own does not have the
+# variable and keeps running.
+WORKER_PARENT_PID_ENV = "LILOTA_PARENT_PID"
+
+# How often a worker process checks whether the process that started it is still
+# there, in seconds.
+WORKER_PARENT_CHECK_INTERVAL = 1.0

@@ -6,6 +6,7 @@ from contextlib import contextmanager, redirect_stderr
 from dataclasses import dataclass
 import io
 import logging
+import select
 import signal
 import subprocess
 import tempfile
@@ -1110,6 +1111,117 @@ class LilotaTestCase(TestCase):
         self.assertTrue(is_restarted)
         self.assertEqual(next_task.status, TaskStatus.COMPLETED)
 
+    def test_kill___when_application_is_killed___should_stop_workers(self):
+        # Arrange
+        with self.application("hello_world_test_script.py") as (
+            application,
+            worker_pids,
+        ):
+            # Act: the application has no chance to stop its workers
+            application.kill()
+            application.wait()
+            running_worker_pids = self.wait_for_end_of_processes(worker_pids)
+
+        # Assert
+        self.assertEqual(
+            running_worker_pids,
+            [],
+            "Workers must end when the application that started them was killed",
+        )
+
+    def test_terminate___when_application_is_terminated___should_stop_workers(self):
+        # Arrange
+        with self.application("hello_world_test_script.py") as (
+            application,
+            worker_pids,
+        ):
+            # Act: the application does not handle SIGTERM, so it ends at once and
+            # does not stop its workers either
+            application.terminate()
+            application.wait()
+            running_worker_pids = self.wait_for_end_of_processes(worker_pids)
+
+        # Assert
+        self.assertEqual(
+            running_worker_pids,
+            [],
+            "Workers must end when the application that started them was terminated",
+        )
+
+    def test_kill___when_application_is_killed___should_stop_subprocess_of_task(self):
+        # Arrange
+        scheduler = Lilota(db_url=self.DB_URL, mode=LilotaMode.SCHEDULER)
+        scheduler.start()
+
+        try:
+            with self.application("subprocess_test_script.py") as (
+                application,
+                _,
+            ):
+                task_id = scheduler.schedule("start_subprocess")
+                task = self.wait_for_task(scheduler, task_id, [TaskStatus.COMPLETED])
+                self.assertEqual(task.status, TaskStatus.COMPLETED)
+                subprocess_pid = task.output["pid"]
+                is_started = self.is_process_running(subprocess_pid)
+
+                # Act
+                application.kill()
+                application.wait()
+                running_pids = self.wait_for_end_of_processes([subprocess_pid])
+        finally:
+            scheduler.stop()
+
+        # Assert
+        self.assertTrue(is_started)
+        self.assertEqual(
+            running_pids,
+            [],
+            "A process started by a task must end with the worker, when the "
+            "application that started the worker was killed",
+        )
+
+    def test_start___when_worker_script_is_started_without_lilota___should_keep_running_after_its_parent_ended(
+        self,
+    ):
+        # Arrange: a process starts the worker script on its own and ends at once
+        worker_script = (
+            Path(__file__).resolve().parent / "scripts" / "hello_world_test_script.py"
+        )
+        parent = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import subprocess, sys\n"
+                "worker = subprocess.Popen(\n"
+                "    [sys.executable, '-u', sys.argv[1]],\n"
+                "    stdout=subprocess.DEVNULL,\n"
+                "    start_new_session=True,\n"
+                ")\n"
+                "print(worker.pid)",
+                str(worker_script),
+            ],
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        worker_pid = int(parent.stdout)
+
+        try:
+            is_started = self.wait_for_worker_nodes(1)
+
+            # Act: more time than a worker needs to notice that its parent is gone
+            self.sleep(3)
+            is_running = self.is_process_running(worker_pid)
+        finally:
+            self.kill_process_group(worker_pid)
+
+        # Assert
+        self.assertTrue(is_started)
+        self.assertTrue(
+            is_running,
+            "A worker that was not started by lilota must keep running when the "
+            "process that started it has ended",
+        )
+
     def sleep(self, seconds: float = 0.3):
         time.sleep(seconds)
 
@@ -1206,6 +1318,93 @@ class LilotaTestCase(TestCase):
             if retry_task is not None or time.monotonic() >= deadline:
                 return retry_task
             self.sleep(0.1)
+
+    @contextmanager
+    def application(self, worker_script: str):
+        """Run an application that starts lilota with 2 workers, in a process of its own.
+
+        Yields the process of the application and the process IDs of its workers, as
+        soon as the workers have started. The application never calls lilota.stop().
+
+        When the block ends, the application is killed, and so are the workers that
+        are still there. A failing test therefore leaves no processes behind.
+        """
+        scripts = Path(__file__).resolve().parent / "scripts"
+        application = subprocess.Popen(
+            [
+                sys.executable,
+                "-u",
+                str(scripts / "application_test_script.py"),
+                str(scripts / worker_script),
+            ],
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        worker_pids: list[int] = []
+
+        try:
+            # The first line the application writes are the process IDs of its workers
+            if select.select([application.stdout], [], [], 10)[0]:
+                worker_pids = [
+                    int(pid) for pid in application.stdout.readline().split()
+                ]
+            self.assertEqual(len(worker_pids), 2, "The application did not start")
+            self.assertTrue(self.wait_for_worker_nodes(2), "The workers did not start")
+
+            yield application, worker_pids
+        finally:
+            # The application first: as long as it runs, it replaces a killed worker
+            application.kill()
+            application.wait()
+            application.stdout.close()
+            for pid in worker_pids:
+                self.kill_process_group(pid)
+
+    def wait_for_worker_nodes(self, count: int, timeout: float = 10) -> bool:
+        """Wait until the number of workers has started. Returns False after the timeout."""
+        deadline = time.monotonic() + timeout
+
+        while True:
+            with LilotaTestCase.get_session() as session:
+                started = (
+                    session.query(Node).filter(Node.type == NodeType.WORKER).count()
+                )
+            if started == count or time.monotonic() >= deadline:
+                return started == count
+            self.sleep(0.1)
+
+    def wait_for_end_of_processes(
+        self, pids: list[int], timeout: float = 10
+    ) -> list[int]:
+        """Wait until none of the processes is running anymore.
+
+        Returns the IDs of the processes that are still running after the timeout.
+        """
+        deadline = time.monotonic() + timeout
+
+        while True:
+            running_pids = [pid for pid in pids if self.is_process_running(pid)]
+            if not running_pids or time.monotonic() >= deadline:
+                return running_pids
+            self.sleep(0.1)
+
+    def is_process_running(self, pid: int) -> bool:
+        # ps instead of os.kill(pid, 0): a process that has ended keeps its process ID
+        # until its parent has collected it. It would be taken for a running process.
+        state = subprocess.run(
+            ["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True
+        ).stdout.strip()
+        return state != "" and not state.startswith("Z")
+
+    def kill_process_group(self, pid: int) -> None:
+        """Kill the process and the processes it has started, if they are still there.
+
+        Works for a process that leads its own process group, as a worker does.
+        """
+        try:
+            os.killpg(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
 
     def wait(self, lilota: Lilota) -> None:
         max = 60
