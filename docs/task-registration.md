@@ -151,6 +151,50 @@ add_output = AddOutput(**task.output)
 ```
 
 
+## What a task can return
+
+The return value of a task function is stored as JSON in the **output** column of the task. A task function can return
+
+* a dataclass, a dictionary or an object implementing **ModelProtocol**
+* any other JSON value: a string, a number, a boolean, a list or **None**
+
+``` python
+@worker.task
+def count_words(data: dict[str, str]) -> int:
+  return len(data["text"].split())
+```
+
+Values that JSON does not know are converted, also inside of a dataclass, a dictionary or a list:
+
+| Returned value                         | Stored as                                     |
+| -------------------------------------- | --------------------------------------------- |
+| **datetime**, **date**, **time**       | text in ISO 8601 format, like **2026-01-02T03:04:05+00:00** |
+| **UUID**                               | text                                          |
+| **Decimal**                            | text, like **9.99**, so that no digit is lost |
+| tuple                                  | list                                          |
+
+### A return value that cannot be stored
+
+A value of any other type cannot be stored, for example an object of a class of your own that has no **as_dict** method.
+
+The task function has done its work at that point. Executing it again would do that work a second time. The task therefore
+
+* gets the status **failed**
+* is **not retried**, whatever **max_attempts** says. Its **max_attempts** column is set to the attempts it has made
+* gets an error that says so:
+
+```
+The task function succeeded, but its result could not be stored: Unsupported type: Report. Expected a JSON value, a ModelProtocol, a dataclass, a datetime, a date, a time, a UUID or a Decimal.
+```
+
+
+## Upgrading from lilota 1.2.1 or older
+
+Up to 1.2.1 a task function could only return a dataclass, a dictionary or an object implementing **ModelProtocol**, and only with values that JSON knows. With any other return value the task was marked as **failed** after its function had returned, and it was executed again if it had attempts left.
+
+Nothing has to be changed in your application. Tasks that failed for this reason are completed now.
+
+
 ## Tasks with setting progress manually
 
 Some tasks run for a longer time and should report progress. **LilotaWorker** provides the **TaskProgress** helper for this purpose. It is part of the **TaskContext** object.

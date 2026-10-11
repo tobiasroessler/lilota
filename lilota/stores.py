@@ -15,7 +15,7 @@ from sqlalchemy import create_engine, select, update, and_, or_
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
 from typing import Any
-from lilota.utils import normalize_data
+from lilota.utils import normalize_data, to_json
 from uuid import UUID
 import logging
 
@@ -504,10 +504,13 @@ class TaskStore(StoreBase):
 
         Args:
             id (UUID): Id of the task.
-            output (Any): Task result data.
+            output (Any): Return value of the task function. It is converted
+                with ``to_json``.
+
+        Raises:
+            TypeError: If the output cannot be converted to JSON.
         """
-        if output is not None:
-            output = normalize_data(output)
+        output = to_json(output)
 
         with self._get_session() as session:
             with session.begin():
@@ -515,17 +518,29 @@ class TaskStore(StoreBase):
                 task.output = output
                 self._complete_progress(task, TaskStatus.COMPLETED, task_progress)
 
-    def end_task_failure(self, id: UUID, error: dict, task_progress: TaskProgress):
+    def end_task_failure(
+        self,
+        id: UUID,
+        error: dict,
+        task_progress: TaskProgress,
+        can_be_retried: bool = True,
+    ):
         """Mark a task as failed.
 
         Args:
             id (UUID): Id of the task.
             error (dict): Error information to store.
+            can_be_retried (bool): False for a task that must not be executed
+                again, whatever attempts it has left. Its ``max_attempts`` is
+                set to the attempts it has made, so that ``retry_tasks`` leaves
+                it alone. Defaults to True.
         """
         with self._get_session() as session:
             with session.begin():
                 task = self._load_task(session, id)
                 task.error = error
+                if not can_be_retried:
+                    task.max_attempts = task.attempts
                 self._complete_progress(task, TaskStatus.FAILED, task_progress)
 
     def delete_task_by_id(self, id: UUID):

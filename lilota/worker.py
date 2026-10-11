@@ -506,14 +506,6 @@ class LilotaWorker(LilotaNode):
                         result = self._execute_task_with_watchdog(
                             started_task, registered_task, task_progress, logger
                         )
-
-                        # Set status to completed
-                        self._wait_for_database(
-                            self._task_store.end_task_success,
-                            task_id,
-                            result,
-                            task_progress,
-                        )
                     except Exception as ex:
                         # A task that fails is not a reason to stop the worker. The
                         # task is marked as failed, which is what makes it a candidate
@@ -525,12 +517,36 @@ class LilotaWorker(LilotaNode):
                             exception_to_dict(ex),
                             task_progress,
                         )
+                    else:
+                        # Set status to completed
+                        self._store_result(task_id, result, task_progress)
             else:
                 # Increase the interval
                 interval = min(interval * 2, self._max_task_heartbeat_interval)
 
             # Sleep
             time.sleep(interval)
+
+    def _store_result(self, task_id, result: Any, task_progress: TaskProgress):
+        try:
+            self._wait_for_database(
+                self._task_store.end_task_success, task_id, result, task_progress
+            )
+        except Exception as ex:
+            # The task function has returned, so the task has done its work. Only the
+            # result cannot be stored. The task fails, but it must not be retried:
+            # that would do the work a second time.
+            self._logger.exception(
+                f"The result of the task could not be stored (id: {task_id})"
+            )
+            error = exception_to_dict(ex)
+            error["message"] = (
+                "The task function succeeded, but its result could not be stored: "
+                f"{error['message']}"
+            )
+            self._wait_for_database(
+                self._task_store.end_task_failure, task_id, error, task_progress, False
+            )
 
     def _execute_task_with_watchdog(
         self,

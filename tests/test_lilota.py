@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from contextlib import contextmanager, redirect_stderr
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 import io
 import logging
 import select
@@ -1385,8 +1386,127 @@ class LilotaTestCase(TestCase):
         self.assertEqual(number_of_workers, 2)
         self.assertEqual(task.status, TaskStatus.COMPLETED)
 
+    def test_schedule___task_returns_list_string_or_number___should_store_value(self):
+        # Arrange
+        expected_outputs = {
+            "return_list": [1, 2, 3],
+            "return_string": "done",
+            "return_number": 42,
+        }
+        lilota = Lilota(
+            db_url=self.DB_URL,
+            script_path=str(
+                Path(__file__).resolve().parent
+                / "scripts"
+                / "return_value_test_script.py"
+            ),
+            number_of_workers=1,
+        )
+        lilota.start()
+
+        # Act
+        try:
+            tasks = {
+                name: self.wait_for_task(
+                    lilota,
+                    lilota.schedule(name),
+                    [TaskStatus.COMPLETED, TaskStatus.FAILED],
+                )
+                for name in expected_outputs
+            }
+        finally:
+            lilota.stop()
+
+        # Assert
+        for name, expected_output in expected_outputs.items():
+            with self.subTest(name):
+                task = tasks[name]
+                self.assertEqual(
+                    task.status, TaskStatus.COMPLETED, self.error_message(task)
+                )
+                self.assertEqual(task.output, expected_output)
+
+    def test_schedule___task_returns_datetime_uuid_and_decimal___should_store_values(
+        self,
+    ):
+        # Arrange
+        lilota = Lilota(
+            db_url=self.DB_URL,
+            script_path=str(
+                Path(__file__).resolve().parent
+                / "scripts"
+                / "return_value_test_script.py"
+            ),
+            number_of_workers=1,
+        )
+        lilota.start()
+
+        # Act
+        try:
+            task_id = lilota.schedule("return_datetime_uuid_and_decimal")
+            task = self.wait_for_task(
+                lilota, task_id, [TaskStatus.COMPLETED, TaskStatus.FAILED]
+            )
+        finally:
+            lilota.stop()
+
+        # Assert: the values the task function has returned can be read from the output
+        self.assertEqual(task.status, TaskStatus.COMPLETED, self.error_message(task))
+        self.assertEqual(
+            UUID(task.output["id"]), UUID("0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d")
+        )
+        self.assertEqual(
+            datetime.fromisoformat(task.output["created_at"]),
+            datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc),
+        )
+        self.assertEqual(Decimal(str(task.output["price"])), Decimal("9.99"))
+
+    def test_schedule___task_returns_value_that_cannot_be_stored___should_not_execute_task_again(
+        self,
+    ):
+        # Arrange: a task with two attempts
+        lilota = Lilota(
+            db_url=self.DB_URL,
+            script_path=str(
+                Path(__file__).resolve().parent
+                / "scripts"
+                / "return_value_test_script.py"
+            ),
+            number_of_workers=1,
+        )
+        lilota.start()
+
+        # Act
+        try:
+            task_id = lilota.schedule("return_value_that_cannot_be_stored")
+            task = self.wait_for_task(
+                lilota, task_id, [TaskStatus.COMPLETED, TaskStatus.FAILED]
+            )
+            retry_task = self.wait_for_retry_of_task(task_id, timeout=3)
+        finally:
+            lilota.stop()
+
+        # Assert
+        self.assertEqual(task.status, TaskStatus.FAILED)
+        self.assertIsNone(
+            retry_task,
+            "The task function has returned without an error. The task must not be "
+            "executed again because its result could not be stored",
+        )
+        self.assertIn(
+            "could not be stored",
+            str(task.error),
+            "The error must say that only the result could not be stored",
+        )
+
     def sleep(self, seconds: float = 0.3):
         time.sleep(seconds)
+
+    def error_message(self, task: Task) -> str | None:
+        """Return the first line of the error of the task, or None if it has no error."""
+        if not task.error:
+            return None
+        return str(task.error.get("message")).splitlines()[0]
 
     def wait_for_restart_of_worker(
         self, lilota: Lilota, process_id: UUID, timeout: float = 10

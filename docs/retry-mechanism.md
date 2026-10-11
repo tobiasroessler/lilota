@@ -39,6 +39,8 @@ A task is retried if it has attempts left and
 
 A task function that raises an exception does not stop the worker. The worker stores the exception in the **error** column of the task, sets its status to **failed** and goes on with the next task.
 
+One kind of failed task is never retried: a task whose function has returned, but whose return value could not be stored. See [Task registration](task-registration.md#a-return-value-that-cannot-be-stored).
+
 
 ## How a task is retried
 

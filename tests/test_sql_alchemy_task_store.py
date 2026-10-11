@@ -494,6 +494,50 @@ class SqlAlchemyTaskStoreTestCase(TestCase):
             )
             self.assertEqual(len(retry_tasks), 2)
 
+    def test_end_task_failure___with_task_that_can_be_retried___should_retry_task(
+        self,
+    ):
+        # Arrange: a task that has two of its three attempts left
+        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, None)
+        task_id = store.create_task("test")
+        store.get_next_task(uuid4())
+        store.start_task(task_id, max_attempts=3)
+
+        # Act
+        store.end_task_failure(
+            task_id, {"message": "Error"}, TaskProgress(task_id, None)
+        )
+        retried = store.retry_tasks()
+
+        # Assert
+        task = store.get_task_by_id(task_id)
+        self.assertEqual(task.status, TaskStatus.FAILED)
+        self.assertEqual(retried, 1)
+
+    def test_end_task_failure___with_task_that_cannot_be_retried___should_not_retry_task(
+        self,
+    ):
+        # Arrange: a task that has two of its three attempts left
+        store = TaskStore(SqlAlchemyTaskStoreTestCase.DB_URL, None)
+        task_id = store.create_task("test")
+        store.get_next_task(uuid4())
+        store.start_task(task_id, max_attempts=3)
+
+        # Act
+        store.end_task_failure(
+            task_id,
+            {"message": "Error"},
+            TaskProgress(task_id, None),
+            can_be_retried=False,
+        )
+        retried = store.retry_tasks()
+
+        # Assert
+        task = store.get_task_by_id(task_id)
+        self.assertEqual(task.status, TaskStatus.FAILED)
+        self.assertEqual(task.error, {"message": "Error"})
+        self.assertEqual(retried, 0)
+
     def test_release_tasks_of_dead_nodes___with_task_of_dead_node___should_set_status_created(
         self,
     ):

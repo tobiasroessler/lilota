@@ -3,7 +3,7 @@ from sqlalchemy import Integer, String, Text, DateTime, JSON, CheckConstraint, I
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 from datetime import datetime, timezone, timedelta
-from dataclasses import is_dataclass, asdict
+from dataclasses import is_dataclass
 from enum import StrEnum
 import logging
 from uuid import UUID, uuid4
@@ -140,14 +140,12 @@ class RegisteredTask:
     It is responsible for:
     - deserializing the task input
     - executing the task function
-    - serializing the output
 
     Args:
       func (Callable): Task function to execute.
       input_model (Optional[Type]): Optional input model used to
         deserialize input payloads.
-      output_model (Optional[Type]): Optional output model used to
-        serialize the task result.
+      output_model (Optional[Type]): Return type of the task function.
       input_param_name (Optional[str]): Name of the input parameter.
       context_param_name (Optional[str]): Name of the context parameter.
       timeout (Optional[timedelta]): Optional timeout that can be set for a task.
@@ -180,7 +178,9 @@ class RegisteredTask:
           task_context (TaskContext): Task context that contains a TaskProgress object and a logger object.
 
         Returns:
-          Any: Serialized task result.
+          Any: What the task function returns. It is converted when it is
+          stored (``TaskStore.end_task_success``), and not here: an error in
+          this method is an error of the task function.
         """
 
         # Deserialize input
@@ -198,10 +198,7 @@ class RegisteredTask:
             kwargs[self.context_param_name] = task_context
 
         # Execute the function
-        result = self.func(**kwargs)
-
-        # Serialize output to JSON-safe dict
-        return self._serialize_output(result)
+        return self.func(**kwargs)
 
     def _deserialize_input(self, raw_input: Any):
         if not self.input_model:
@@ -215,20 +212,6 @@ class RegisteredTask:
         if isinstance(raw_input, self.input_model):
             return raw_input
         raise TypeError(f"Unsupported input_model type: {self.input_model}")
-
-    def _serialize_output(self, output: Any):
-        if not self.output_model:
-            return output
-        if isinstance(output, dict):
-            return output
-        if isinstance(output, ModelProtocol):
-            return output.as_dict()
-        if isinstance(output, self.output_model):
-            if is_dataclass(output):
-                return asdict(output)
-        if is_dataclass(self.output_model):
-            return self.output_model(**output)
-        return output
 
 
 class UtcDateTime(TypeDecorator):
