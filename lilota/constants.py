@@ -14,6 +14,13 @@ VERSION_TABLE = f"{TABLE_PREFIX}alembic_version"
 # Where lilota up to 1.1.1 kept its migration revision.
 LEGACY_VERSION_TABLE = "alembic_version"
 
+# How often a process tries to migrate the database, and how many seconds it waits
+# before it tries again. Processes that start at the same moment all find a database
+# that has to be migrated and all create the same tables. All but one fail. When they
+# try again, the one that was first has done the work and nothing is left to do.
+MIGRATION_ATTEMPTS = 5
+MIGRATION_RETRY_DELAY = 1.0
+
 # The exit code of a worker process that stops itself because the task it is executing
 # has expired. With it the process manager can tell a worker that lilota stopped on
 # purpose from a worker script that failed. Both end with an error, but only the first

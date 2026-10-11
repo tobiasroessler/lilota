@@ -15,6 +15,10 @@ from lilota.db.alembic import upgrade_db
 upgrade_db("postgresql+psycopg://user:password@localhost:5432/myapp")
 ```
 
+Several processes can do this at the same moment, for example the worker processes of a web server that each create a **Lilota**, or several containers that start together. Only one of them creates the tables. The others notice that they came too late, wait a second and then find the database up to date.
+
+For the same reason an error in a migration is not reported at once: **lilota** tries 5 times, with a second in between, before it gives up with **Could not update the database**.
+
 
 ## Sharing a database with your application
 

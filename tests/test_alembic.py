@@ -6,17 +6,37 @@ from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from pathlib import Path
+import subprocess
 import tempfile
+import time
 from unittest import TestCase, main
+from unittest.mock import patch
 from sqlalchemy import Column, Integer, MetaData, Table, create_engine, inspect, text
-from lilota.constants import LEGACY_VERSION_TABLE, VERSION_TABLE
-from lilota.db.alembic import get_alembic_config, include_object, upgrade_db
+from lilota.constants import LEGACY_VERSION_TABLE, MIGRATION_ATTEMPTS, VERSION_TABLE
+from lilota.db.alembic import (
+    adopt_legacy_version_table,
+    get_alembic_config,
+    include_object,
+    upgrade_db,
+)
 from lilota.models import Base
 
 LILOTA_TABLES = {"lilota_log", "lilota_node", "lilota_node_leader", "lilota_task"}
 
 # A revision of the application that shares the database with lilota.
 HOST_REVISION = "0123456789ab"
+
+# The code of a process that migrates a database at a point in time. With it several
+# processes migrate the same database at the same moment. The process gets the URL of
+# the database and the point in time as arguments.
+MIGRATE_AT_POINT_IN_TIME = """
+import sys
+import time
+from lilota.db.alembic import upgrade_db
+
+time.sleep(max(0.0, float(sys.argv[2]) - time.time()))
+upgrade_db(sys.argv[1])
+"""
 
 
 class UpgradeDbTestCase(TestCase):
@@ -84,6 +104,74 @@ class UpgradeDbTestCase(TestCase):
         # Assert
         self.assertEqual(self.table_names(), LILOTA_TABLES | {VERSION_TABLE})
         self.assertEqual(self.versions(VERSION_TABLE), [self.head])
+
+    def test_upgrade_db___several_processes_at_the_same_moment___should_migrate_without_error(
+        self,
+    ):
+        # Arrange: 6 processes that migrate the new database 2 seconds from now, which
+        # is the time they need to start
+        point_in_time = time.time() + 2
+        processes = [
+            subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    MIGRATE_AT_POINT_IN_TIME,
+                    self.db_url,
+                    str(point_in_time),
+                ],
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            for _ in range(6)
+        ]
+
+        # Act
+        errors = []
+        for process in processes:
+            _, stderr = process.communicate()
+            if process.returncode != 0:
+                errors.append(self.error_message(stderr))
+
+        # Assert
+        self.assertEqual(
+            errors,
+            [],
+            f"{len(errors)} of {len(processes)} processes that migrated the database "
+            "at the same moment have failed",
+        )
+        self.assertEqual(self.table_names(), LILOTA_TABLES | {VERSION_TABLE})
+        self.assertEqual(self.versions(VERSION_TABLE), [self.head])
+
+    def test_upgrade_db___database_that_cannot_be_migrated___should_raise_after_last_attempt(
+        self,
+    ):
+        # Arrange: a database that cannot even be opened. Trying again does not help.
+        db_url = "sqlite:////folder/that/does/not/exist/lilota.db"
+
+        # Act
+        with (
+            patch("lilota.db.alembic.MIGRATION_RETRY_DELAY", 0),
+            patch(
+                "lilota.db.alembic.adopt_legacy_version_table",
+                wraps=adopt_legacy_version_table,
+            ) as attempt,
+            self.assertRaises(Exception) as raised,
+        ):
+            upgrade_db(db_url)
+
+        # Assert
+        self.assertTrue(
+            str(raised.exception).startswith("Could not update the database: ")
+        )
+        self.assertEqual(attempt.call_count, MIGRATION_ATTEMPTS)
+
+    def error_message(self, stderr: str) -> str:
+        """Return the line of a traceback that names the exception."""
+        lines = stderr.strip().splitlines()
+        return next(
+            (line for line in lines if line.startswith("Exception: ")), lines[-1]
+        )
 
     def test_upgrade_db___database_of_another_application___should_leave_its_version_alone(
         self,

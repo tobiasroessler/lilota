@@ -12,7 +12,14 @@ from sqlalchemy import (
     inspect,
     select,
 )
-from lilota.constants import LEGACY_VERSION_TABLE, TABLE_PREFIX, VERSION_TABLE
+from lilota.constants import (
+    LEGACY_VERSION_TABLE,
+    MIGRATION_ATTEMPTS,
+    MIGRATION_RETRY_DELAY,
+    TABLE_PREFIX,
+    VERSION_TABLE,
+)
+import time
 
 
 def get_migrations_path() -> str:
@@ -45,15 +52,29 @@ def upgrade_db(db_url: str):
     Before migrating, a database set up by lilota 1.1.1 or older is moved over to
     lilota's own version table (see adopt_legacy_version_table).
 
+    A migration that fails is tried again after a moment, MIGRATION_ATTEMPTS times
+    in all. Several lilota processes usually start at the same time, and each of
+    them migrates. The ones that are not first fail, because the tables they want
+    to create are there already. On the next attempt they find the database up to
+    date.
+
     Args:
       db_url (str): Database connection URL.
+
+    Raises:
+      Exception: If the last attempt has failed as well.
     """
     cfg = get_alembic_config(db_url)
-    try:
-        adopt_legacy_version_table(cfg, db_url)
-        command.upgrade(cfg, "head")
-    except Exception as ex:
-        raise Exception(f"Could not update the database: {str(ex)}")
+
+    for attempt in range(1, MIGRATION_ATTEMPTS + 1):
+        try:
+            adopt_legacy_version_table(cfg, db_url)
+            command.upgrade(cfg, "head")
+            return
+        except Exception as ex:
+            if attempt == MIGRATION_ATTEMPTS:
+                raise Exception(f"Could not update the database: {str(ex)}")
+            time.sleep(MIGRATION_RETRY_DELAY)
 
 
 def current_rev(db_url: str):
