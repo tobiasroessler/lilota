@@ -8,3 +8,22 @@ The Lilota class also provides two methods to:
 
 Check whether a fatal error has occurred (**has_failed**)
 Wait until a fatal error occurs (**wait_for_failure**), which blocks execution
+
+## Worker script does not start a worker
+
+Each worker process runs the script passed as **script_path** as its entry point. The script has to start the worker itself:
+
+``` python
+def main():
+  worker.start()
+
+
+if __name__ == "__main__":
+  main()
+```
+
+A started worker runs until it is stopped by **Lilota**. If the script ends without calling **worker.start()**, **Lilota** stops all workers and reports a fatal error:
+
+```
+The worker script 'myscript.py' exited without starting a worker. Did you forget to call worker.start()?
+```

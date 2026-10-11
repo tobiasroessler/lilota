@@ -754,6 +754,36 @@ class LilotaTestCase(TestCase):
         finally:
             lilota.stop()
 
+    def test_worker_not_started___when_script_does_not_start_worker___should_stop_worker(
+        self,
+    ):
+        # Arrange
+        lilota = Lilota(
+            db_url=self.DB_URL,
+            script_path=str(
+                Path(__file__).resolve().parent
+                / "scripts"
+                / "worker_not_started_test_script.py"
+            ),
+            number_of_workers=1,
+            process_manager_interval=0.1,
+            logging_level=logging.DEBUG,
+        )
+        self.assertIsNone(lilota.error)
+
+        # Act
+        lilota.start()
+        lilota.wait_for_failure(timeout=5)
+
+        # Assert
+        try:
+            self.assertTrue(lilota.has_failed())
+            self.assertIn("worker_not_started_test_script.py", lilota.error)
+            self.assertIn("worker.start()", lilota.error)
+            self.assertEqual(len(lilota._process_manager._processes), 0)
+        finally:
+            lilota.stop()
+
     def sleep(self, seconds: float = 0.3):
         time.sleep(seconds)
 

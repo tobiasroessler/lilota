@@ -99,6 +99,10 @@ if __name__ == "__main__":
 
 The script created above is passed to a **Lilota** instance for execution. 
 
+> **Note:** The script must start the worker by calling `worker.start()`. Each worker
+> process runs the script as its entry point, and a script that ends without starting
+> a worker is treated as a fatal error (see `lilota.error`).
+
 That instance can start multiple processes, each of which executes the script once. You can specify the number of workers for a **Lilota** instance. By default, it is set to **cpu_count()**.
 
 In this example, we use two model classes: one for input arguments and one for the output.

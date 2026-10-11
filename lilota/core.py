@@ -66,8 +66,12 @@ class ProcessManager:
         If a process exits with a non-zero return code and produces stderr output,
         all processes are stopped and the fatal error callback is invoked.
 
-        If a process exits successfully, it is automatically restarted using
-        the original script path.
+        The same happens if a process exits successfully. A started worker runs
+        until it is stopped from the outside, so a script that ends on its own
+        never started its worker.
+
+        In all other cases the process is automatically restarted using the
+        original script path.
         """
         for mp in list(self._processes):
             proc = mp.proc
@@ -83,6 +87,15 @@ class ProcessManager:
                 # < 0: Process was terminated by a signal (Unix only)
                 if returncode != 0 and stderr:
                     self._handle_error(stderr)
+                    return
+
+                # A started worker never exits on its own. Restarting the script would
+                # only end up in an endless loop.
+                if returncode == 0:
+                    self._handle_error(
+                        f"The worker script '{mp.script_path}' exited without starting a worker. "
+                        "Did you forget to call worker.start()?"
+                    )
                     return
 
                 # Restart process
@@ -244,6 +257,9 @@ class Lilota:
           script_path (str):
             Path to a Python script that defines and registers Lilota tasks.
             Each worker process executes this script as its entry point.
+            The script must call ``worker.start()``. If it ends without
+            starting a worker, all workers are stopped and the failure is
+            reported through ``error``.
 
           number_of_workers (int, optional):
             Number of worker processes to spawn. Defaults to the number of CPU cores and cannot exceed this value * 5.
