@@ -588,7 +588,7 @@ class Lilota:
             )
             self._process_manager_heartbeat = None
 
-    def schedule(self, name: str, input: Any = None) -> int:
+    def schedule(self, name: str, input: Any = None) -> UUID:
         """Schedule a task for execution.
 
         Args:
@@ -596,7 +596,7 @@ class Lilota:
           input (Any, optional): Input payload for the task. Defaults to None.
 
         Returns:
-          int: Identifier of the scheduled task.
+          UUID: Identifier of the scheduled task.
 
         Raises:
           RuntimeError: If lilota has never been started, or if it only runs
@@ -660,7 +660,7 @@ class Lilota:
         }
 
     def get_all_nodes(self) -> list[Node]:
-        """Retrieve all registered scheduler nodes.
+        """Retrieve all registered nodes: schedulers and workers.
 
         Returns:
             list[Node]: A list containing all nodes currently stored in the

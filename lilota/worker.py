@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Type, Optional, Any, get_type_hints
+from uuid import UUID
 from lilota.constants import (
     DEFAULT_DB_URL,
     WORKER_EXIT_CODE_TASK_EXPIRED,
@@ -33,7 +34,7 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
         self,
         interval: float,
         jitter: float,
-        node_id: str,
+        node_id: UUID,
         node_timeout_sec: int,
         node_store: NodeStore,
         node_leader_store: NodeLeaderStore,
@@ -45,12 +46,13 @@ class WorkerHeartbeatTask(NodeHeartbeatTask):
         Args:
           interval (float): Interval in seconds between heartbeats.
           jitter (float): Jitter that is used for the heartbeat interval.
-          node_id (str): Unique identifier of the worker node.
+          node_id (UUID): Unique identifier of the worker node.
           node_timeout_sec (int): Timeout in seconds after which nodes are
             considered dead.
-          node_store (SqlAlchemyNodeStore): Store used for node operations.
-          node_leader_store (SqlAlchemyNodeLeaderStore): Store used for leader
+          node_store (NodeStore): Store used for node operations.
+          node_leader_store (NodeLeaderStore): Store used for leader
             election and leadership renewal.
+          task_store (TaskStore): Store used for task operations.
           logger (logging.Logger): Logger instance.
         """
         super().__init__(interval, jitter, node_id, node_store, logger)
@@ -366,12 +368,12 @@ class LilotaWorker(LilotaNode):
             return fn
 
         # Supports:
-        # @lilota.task
+        # @worker.task
         if func is not None:
             return decorator(func)
 
         # Supports:
-        # @lilota.task(...)
+        # @worker.task(...)
         return decorator
 
     def _on_started(self):

@@ -19,7 +19,7 @@ class NodeHeartbeatTask(HeartbeatTask):
         self,
         interval: float,
         jitter: float,
-        node_id: str,
+        node_id: UUID,
         node_store: NodeStore,
         logger: logging.Logger,
     ):
@@ -28,8 +28,8 @@ class NodeHeartbeatTask(HeartbeatTask):
         Args:
           interval (float): Interval in seconds between heartbeat executions.
           jitter (float): Jitter that is used for the heartbeat interval.
-          node_id (str): Unique identifier of the node.
-          node_store (SqlAlchemyNodeStore): Store used for node operations.
+          node_id (UUID): Unique identifier of the node.
+          node_store (NodeStore): Store used for node operations.
           logger (logging.Logger): Logger instance used for reporting errors.
         """
         super().__init__(interval, jitter)

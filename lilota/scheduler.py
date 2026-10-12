@@ -1,4 +1,5 @@
 from typing import Any
+from uuid import UUID
 from lilota.node import LilotaNode, NodeHeartbeatTask
 from lilota.models import NodeType
 from lilota.heartbeat import Heartbeat
@@ -68,7 +69,7 @@ class LilotaScheduler(LilotaNode):
         # Stop heartbeat thread
         self._stop_node_heartbeat()
 
-    def schedule(self, name: str, input: Any = None) -> int:
+    def schedule(self, name: str, input: Any = None) -> UUID:
         """Create and store a new task.
 
         Args:
@@ -76,7 +77,7 @@ class LilotaScheduler(LilotaNode):
           input (Any, optional): Input payload for the task. Defaults to None.
 
         Returns:
-          int: Identifier of the created task.
+          UUID: Identifier of the created task.
 
         Raises:
           RuntimeError: If the scheduler has never been started.

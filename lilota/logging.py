@@ -9,7 +9,7 @@ class SqlAlchemyHandler(logging.Handler):
     """Logging handler that stores log records in the database.
 
     This handler writes log messages to the ``lilota_log`` table using
-    the provided :class:`SqlAlchemyLogStore`. Each log record is converted
+    the provided :class:`LogStore`. Each log record is converted
     into a :class:`LogEntry` model instance.
     """
 
@@ -17,7 +17,7 @@ class SqlAlchemyHandler(logging.Handler):
         """Initialize the logging handler.
 
         Args:
-          log_store (SqlAlchemyLogStore): Store used to persist log entries.
+          log_store (LogStore): Store used to persist log entries.
         """
         super().__init__()
         self.log_store: LogStore = log_store
@@ -116,7 +116,7 @@ def configure_logging(
 
     This function creates and configures a logger with the given name. The
     logger uses :class:`SqlAlchemyHandler` to persist log records in the
-    database through :class:`SqlAlchemyLogStore`. Any existing handlers
+    database through :class:`LogStore`. Any existing handlers
     attached to the logger are removed before configuration.
 
     Args:

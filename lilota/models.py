@@ -51,12 +51,12 @@ class TaskProgress:
     task store.
 
     Args:
-      task_id (int): Identifier of the task.
-      set_progress (Callable[[int, int], None]): Function used to persist
+      task_id (UUID): Identifier of the task.
+      set_progress (Callable[[UUID, int], None]): Function used to persist
         progress updates.
     """
 
-    def __init__(self, task_id: int, set_progress: Callable[[int, int], None]):
+    def __init__(self, task_id: UUID, set_progress: Callable[[UUID, int], None]):
         self.task_id = task_id
         self.set_progress = set_progress
         self.set_progress_manually = False
@@ -79,13 +79,13 @@ class TaskContext:
     automatically into task functions that declare a ``TaskContext`` parameter.
 
     Example:
-        @lilota.task
+        @worker.task
         def process(data: InputModel, ctx: TaskContext):
             ctx.logger.info("starting")
-            ctx.progress.update(50)
+            ctx.progress.set(50)
 
     Attributes:
-        task_id (Optional[str]):
+        task_id (Optional[UUID]):
             Unique identifier of the currently executing task.
 
         progress (Optional[TaskProgress]):
@@ -105,7 +105,7 @@ class TaskContext:
         """Initialize a task execution context.
 
         Args:
-            task_id (Optional[str]):
+            task_id (Optional[UUID]):
                 Unique identifier of the currently executing task.
 
             progress (Optional[TaskProgress]):
