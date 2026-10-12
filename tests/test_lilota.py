@@ -270,6 +270,61 @@ class LilotaTestCase(TestCase):
         # Assert
         self.assertEqual(number_of_workers, 1)
 
+    def test_schedule___scheduler_is_not_started___should_raise(self):
+        # Arrange
+        scheduler = Lilota.scheduler(self.DB_URL)
+
+        # Act & Assert
+        with self.assertRaises(Exception) as ctx:
+            scheduler.schedule("hello_world")
+
+        self.assertEqual(
+            str(ctx.exception),
+            "A task cannot be scheduled because the scheduler was not started. "
+            "Call start() first",
+        )
+
+    def test_schedule___lilota_is_not_started___should_raise(self):
+        # Arrange
+        lilota = Lilota(
+            db_url=self.DB_URL,
+            script_path=str(
+                Path(__file__).resolve().parent
+                / "scripts"
+                / "hello_world_test_script.py"
+            ),
+            number_of_workers=1,
+        )
+
+        # Act & Assert
+        with self.assertRaises(Exception) as ctx:
+            lilota.schedule("hello_world")
+
+        self.assertEqual(
+            str(ctx.exception),
+            "A task cannot be scheduled because the scheduler was not started. "
+            "Call start() first",
+        )
+
+    def test_schedule___in_workers_mode___should_raise(self):
+        # Arrange
+        lilota = Lilota(
+            db_url=self.DB_URL,
+            mode=LilotaMode.WORKERS,
+            script_path="dummy.py",
+            number_of_workers=1,
+        )
+
+        # Act & Assert
+        with self.assertRaises(Exception) as ctx:
+            lilota.schedule("hello_world")
+
+        self.assertEqual(
+            str(ctx.exception),
+            "A task cannot be scheduled in WORKERS mode because there is no "
+            "scheduler. Use the mode SCHEDULER or ALL",
+        )
+
     def test_schedule___add_1_hello_world_task___should_execute_task(self):
         # Arrange
         lilota = Lilota(

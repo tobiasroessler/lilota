@@ -77,7 +77,17 @@ class LilotaScheduler(LilotaNode):
 
         Returns:
           int: Identifier of the created task.
+
+        Raises:
+          RuntimeError: If the scheduler has never been started.
         """
+        # The stores are created when the node is started for the first time
+        if self._task_store is None:
+            raise RuntimeError(
+                "A task cannot be scheduled because the scheduler was not started. "
+                "Call start() first"
+            )
+
         self._logger.debug(f"Create task (name: '{name}', input: {input})")
         return self._task_store.create_task(name, input)
 

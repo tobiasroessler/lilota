@@ -597,7 +597,17 @@ class Lilota:
 
         Returns:
           int: Identifier of the scheduled task.
+
+        Raises:
+          RuntimeError: If lilota has never been started, or if it only runs
+            workers (mode WORKERS).
         """
+        if self._mode == LilotaMode.WORKERS:
+            raise RuntimeError(
+                "A task cannot be scheduled in WORKERS mode because there is no "
+                "scheduler. Use the mode SCHEDULER or ALL"
+            )
+
         id = self._scheduler.schedule(name, input)
 
         if self.has_failed():
