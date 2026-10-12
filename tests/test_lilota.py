@@ -12,13 +12,19 @@ import select
 import signal
 import subprocess
 import tempfile
-from unittest import TestCase, main
+from unittest import TestCase, main, skipIf
 from unittest.mock import patch
 from typing import Any
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from lilota.constants import DEFAULT_TEST_DB_URL
-from lilota.core import Lilota, LilotaMode, ManagedProcess, WorkerErrorOutput
+from lilota.core import (
+    Lilota,
+    LilotaMode,
+    ManagedProcess,
+    ProcessManager,
+    WorkerErrorOutput,
+)
 from lilota.models import (
     Node,
     NodeLeader,
@@ -2167,6 +2173,69 @@ class WorkerErrorOutputTestCase(TestCase):
         # Assert
         self.assertEqual(len(text), maximum)
         self.assertEqual(len(passed_on), length)
+
+
+@skipIf(os.name == "nt", "A process is not started with fork on Windows")
+class ProcessManagerTestCase(TestCase):
+    # The file that fork_hook creates. None: the hook does nothing.
+    fork_marker: Path | None = None
+
+    @classmethod
+    def setUpClass(cls):
+        # A fork hook cannot be removed again. It is registered once, and only does
+        # something while a test has set fork_marker.
+        os.register_at_fork(after_in_child=cls.fork_hook)
+
+    @classmethod
+    def fork_hook(cls):
+        if cls.fork_marker is not None:
+            cls.fork_marker.touch()
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.directory = Path(directory.name)
+        self.script = self.directory / "script.py"
+        self.script.write_text("import time\ntime.sleep(60)\n")
+
+    def start_process(self) -> subprocess.Popen:
+        """Start a script that does nothing with a ProcessManager. It is killed after the test."""
+        proc = ProcessManager().start(str(self.script))
+
+        # Not with stop_all: it sends its signal to the process group of the process,
+        # which is the one of the tests if the process did not get its own.
+        self.addCleanup(proc.wait)
+        self.addCleanup(proc.kill)
+        return proc
+
+    def test_start___should_not_run_python_code_in_forked_process(self):
+        # Arrange
+        # Between fork and the start of the script the new process is a copy of this
+        # one, with only the thread that called fork. Python code that runs there can
+        # wait forever for a lock that another thread was holding. Python runs the
+        # fork hooks in the new process only if it is going to run Python code there.
+        marker = self.directory / "python_code_was_run"
+        ProcessManagerTestCase.fork_marker = marker
+        self.addCleanup(setattr, ProcessManagerTestCase, "fork_marker", None)
+
+        # Act
+        self.start_process()
+
+        # Assert
+        self.assertFalse(
+            marker.exists(),
+            "Python code was run in the forked process before the script was started",
+        )
+
+    def test_start___should_make_process_leader_of_its_own_session(self):
+        # Act
+        proc = self.start_process()
+
+        # Assert
+        # A worker is stopped with a signal to its process group, which also ends the
+        # processes that a task has started. That needs a group of its own.
+        self.assertEqual(os.getsid(proc.pid), proc.pid)
+        self.assertEqual(os.getpgid(proc.pid), proc.pid)
 
 
 if __name__ == "__main__":

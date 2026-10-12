@@ -153,7 +153,12 @@ class ProcessManager:
             # Nothing in this process can stop the workers if it is killed. They have
             # to notice on their own that it is gone.
             env={**os.environ, WORKER_PARENT_PID_ENV: str(os.getpid())},
-            preexec_fn=os.setsid if os.name != "nt" else None,
+            # The worker gets its own session and process group, so that a signal to
+            # the group reaches the worker and what its tasks have started, and
+            # nothing else. Not with preexec_fn=os.setsid: that runs Python code in
+            # the forked process, which can deadlock when this process has more
+            # threads. No effect on Windows, where creationflags does it.
+            start_new_session=True,
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
         )
 
