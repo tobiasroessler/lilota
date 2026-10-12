@@ -514,13 +514,16 @@ class TaskStore(StoreBase):
                     current_version = task.version
                     current_attempts = task.attempts
 
-                    # 2. Try to "claim" via optimistic locking
+                    # 2. Try to "claim" via optimistic locking. The status is
+                    # checked again: a task that was running when it was selected
+                    # may have been completed since then, and must not be retried.
                     result = session.execute(
                         update(Task)
                         .where(
                             Task.id == task.id,
                             Task.version == current_version,
                             Task.retried_at.is_(None),
+                            Task.status == task.status,
                         )
                         .values(retried_at=now, version=current_version + 1)
                     )
@@ -558,24 +561,29 @@ class TaskStore(StoreBase):
                 task = self._load_task(session, id)
                 task.progress_percentage = max(0, min(progress, 100))
 
-    def end_task_success(self, id: UUID, output: Any, task_progress: TaskProgress):
+    def end_task_success(
+        self, id: UUID, output: Any, task_progress: TaskProgress
+    ) -> bool:
         """Mark a task as successfully completed.
+
+        A task that has ended or was retried in the meantime is not changed, see
+        ``_end_task``.
 
         Args:
             id (UUID): Id of the task.
             output (Any): Return value of the task function. It is converted
                 with ``to_json``.
 
+        Returns:
+            bool: True if the task was completed, False if it was not changed.
+
         Raises:
             TypeError: If the output cannot be converted to JSON.
         """
         output = to_json(output)
-
-        with self._get_session() as session:
-            with session.begin():
-                task = self._load_task(session, id)
-                task.output = output
-                self._complete_progress(task, TaskStatus.COMPLETED, task_progress)
+        return self._end_task(
+            id, TaskStatus.COMPLETED, task_progress, {"output": output}
+        )
 
     def end_task_failure(
         self,
@@ -593,14 +601,16 @@ class TaskStore(StoreBase):
                 again, whatever attempts it has left. Its ``max_attempts`` is
                 set to the attempts it has made, so that ``retry_tasks`` leaves
                 it alone. Defaults to True.
+
+        Returns:
+            bool: True if the task was set to failed, False if it was not changed
+            because it has ended or was retried in the meantime, see ``_end_task``.
         """
-        with self._get_session() as session:
-            with session.begin():
-                task = self._load_task(session, id)
-                task.error = error
-                if not can_be_retried:
-                    task.max_attempts = task.attempts
-                self._complete_progress(task, TaskStatus.FAILED, task_progress)
+        values = {"error": error}
+        if not can_be_retried:
+            values["max_attempts"] = Task.attempts
+
+        return self._end_task(id, TaskStatus.FAILED, task_progress, values)
 
     def delete_task_by_id(self, id: UUID):
         """Delete a task by its UUID.
@@ -616,13 +626,61 @@ class TaskStore(StoreBase):
                 session.delete(task)
         return True
 
-    def _complete_progress(
-        self, task: Task, task_status: TaskStatus, task_progress: TaskProgress
-    ):
+    def _end_task(
+        self,
+        id: UUID,
+        status: TaskStatus,
+        task_progress: TaskProgress,
+        values: dict,
+    ) -> bool:
+        """Set the status a task ends with, unless it has ended or was retried.
+
+        While a worker is about to store how its task has ended, the leader may
+        expire the same task because it has run into its timeout, and create its
+        retry. Only one of them may win. If the worker stored its result
+        afterwards, the task would be completed and executed again by its retry.
+
+        So the task is changed with a single statement that checks its state, as
+        ``expire_overdue_tasks`` does. A task is not changed if it is completed,
+        failed, expired or cancelled, if it has been retried, or if it does not
+        exist any more.
+
+        Args:
+            id (UUID): Id of the task.
+            status (TaskStatus): The status the task ends with.
+            task_progress (TaskProgress): Tells whether the task has set its
+                progress itself.
+            values (dict): Further columns to set.
+
+        Returns:
+            bool: True if the task was changed.
+        """
+        values = {
+            **values,
+            "status": status,
+            "end_date_time": datetime.now(timezone.utc),
+        }
         if not task_progress.set_progress_manually:
-            task.progress_percentage = 100
-        task.status = task_status
-        task.end_date_time = datetime.now(timezone.utc)
+            values["progress_percentage"] = 100
+
+        with self._get_session() as session:
+            with session.begin():
+                result = session.execute(
+                    update(Task)
+                    .where(
+                        Task.id == id,
+                        Task.status.in_(
+                            [
+                                TaskStatus.CREATED,
+                                TaskStatus.SCHEDULED,
+                                TaskStatus.RUNNING,
+                            ]
+                        ),
+                        Task.retried_at.is_(None),
+                    )
+                    .values(**values)
+                )
+                return result.rowcount == 1
 
     def _load_task(self, session, id: UUID) -> Task:
         task: Task = session.get(Task, id)

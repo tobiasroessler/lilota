@@ -542,7 +542,7 @@ class LilotaWorker(LilotaNode):
 
     def _store_result(self, task_id, result: Any, task_progress: TaskProgress):
         try:
-            self._wait_for_database(
+            is_stored = self._wait_for_database(
                 self._task_store.end_task_success, task_id, result, task_progress
             )
         except Exception as ex:
@@ -560,6 +560,14 @@ class LilotaWorker(LilotaNode):
             self._wait_for_database(
                 self._task_store.end_task_failure, task_id, error, task_progress, False
             )
+        else:
+            # The leader has ended the task before, and its decision stands
+            if not is_stored:
+                self._logger.warning(
+                    "The result of the task was not stored, because the task had "
+                    "ended before: it has run into its timeout, or it was deleted "
+                    f"(id: {task_id})"
+                )
 
     def _execute_task_with_watchdog(
         self,

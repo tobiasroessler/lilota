@@ -26,3 +26,14 @@ The default timeout is **5 minutes**. This can be adjusted using Python’s **ti
 If **None** is specified, the timeout is disabled.
 
 The worker process that was stopped is replaced by a new one, so the tasks that are waiting are still executed. The expired task is retried if it has attempts left. See [Retry mechanism](retry-mechanism.md).
+
+
+## A task that ends at the moment it expires
+
+A task that ends just when its timeout is over is either **completed** or **expired**, never both. If the task was set to **expired** first, its result is not stored, and the task is retried if it has attempts left. The worker writes a warning to the **lilota_log** table:
+
+```
+The result of the task was not stored, because the task had ended before: it has run into its timeout, or it was deleted (id: 0d3c...)
+```
+
+The timeout is checked by another worker than the one that executes the task. If your workers run on several machines, their clocks have to be in sync. See [Clocks on several machines](lilota-is-simple.md#clocks-on-several-machines).

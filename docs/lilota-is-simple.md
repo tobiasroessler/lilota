@@ -147,3 +147,13 @@ All nodes communicate through the shared database. If you do not specify a conne
 For production-ready applications, we recommend using a more advanced database that handles multiple processes efficiently. We recommend PostgreSQL. However, since **lilota** uses SQLAlchemy to access the database, any database supported by SQLAlchemy can be used.
 
 For many applications this setup is sufficient. However, some scenarios require horizontal scaling. In these cases, multiple **Lilota** instances can run across several servers. They still connect to the same database.
+
+
+## Clocks on several machines
+
+Every node uses the clock of its own machine: when it stores the time it was last seen, when it sets the time at which a task expires, and when it compares such a time with the current time. Nodes on one machine share one clock. If your nodes run on several machines, the clocks of these machines have to be in sync, for example with NTP.
+
+A difference of less than a second does not matter. A larger one does:
+
+* The timeout of a task is set with the clock of the worker that executes it and checked with the clock of the leader. If the clock of the leader is ahead, a task is expired and retried before its timeout is over, while it is still being executed.
+* A worker that is alive is taken for dead when its clock is behind the clock of the leader by about the node timeout, which is 20 seconds by default. Its tasks are given back and executed a second time. See [Worker maintenance](worker-maintenance.md).
