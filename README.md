@@ -103,7 +103,7 @@ The script created above is passed to a **Lilota** instance for execution.
 > process runs the script as its entry point, and a script that ends without starting
 > a worker is treated as a fatal error (see `lilota.error`).
 
-That instance can start multiple processes, each of which executes the script once. You can specify the number of workers for a **Lilota** instance. By default, it is set to **cpu_count()**.
+That instance can start multiple processes, each of which executes the script once. By default, it starts one worker process. You can specify the number of workers for a **Lilota** instance with **number_of_workers**. A worker executes one task at a time, so this is the number of tasks that can be executed in parallel. See [Number of workers](https://tobiasroessler.github.io/lilota/lilota-is-simple/#number-of-workers) for what a worker costs.
 
 In this example, we use two model classes: one for input arguments and one for the output.
 These models should typically be defined in their own module and shared between **Lilota** and **LilotaWorker**.

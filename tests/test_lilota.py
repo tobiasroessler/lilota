@@ -230,6 +230,46 @@ class LilotaTestCase(TestCase):
         self.assertFalse(lilota._is_started)
         self.assertEqual(len(lilota._process_manager._processes), 0)
 
+    def test_start___without_number_of_workers___should_start_one_worker(self):
+        # Arrange
+        lilota = Lilota(
+            db_url=self.DB_URL,
+            script_path=str(
+                Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"
+            ),
+        )
+
+        # Act
+        lilota.start()
+
+        try:
+            number_of_workers = len(lilota._process_manager._processes)
+        finally:
+            lilota.stop()
+
+        # Assert
+        self.assertEqual(number_of_workers, 1)
+
+    def test_workers___without_number_of_workers___should_start_one_worker(self):
+        # Arrange
+        lilota = Lilota.workers(
+            db_url=self.DB_URL,
+            script_path=str(
+                Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"
+            ),
+        )
+
+        # Act
+        lilota.start()
+
+        try:
+            number_of_workers = len(lilota._process_manager._processes)
+        finally:
+            lilota.stop()
+
+        # Assert
+        self.assertEqual(number_of_workers, 1)
+
     def test_schedule___add_1_hello_world_task___should_execute_task(self):
         # Arrange
         lilota = Lilota(

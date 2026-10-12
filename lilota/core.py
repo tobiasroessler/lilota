@@ -331,7 +331,7 @@ class Lilota:
     def workers(
         cls,
         script_path: str,
-        number_of_workers: int,
+        number_of_workers: int = 1,
         db_url: str = DEFAULT_DB_URL,
         **kwargs,
     ):
@@ -341,6 +341,7 @@ class Lilota:
           db_url (str): Database connection URL.
           script_path (str): Path to the worker script.
           number_of_workers (int): Number of worker processes to spawn.
+            Defaults to 1.
           **kwargs: Additional keyword arguments passed to the constructor.
 
         Returns:
@@ -360,7 +361,7 @@ class Lilota:
         *,
         mode: LilotaMode = LilotaMode.ALL,
         script_path: str = None,
-        number_of_workers: int = cpu_count(),
+        number_of_workers: int = 1,
         scheduler_heartbeat_interval: float = 5,
         scheduler_timeout_sec: int = 20,
         process_manager_interval: float = 1.0,
@@ -386,7 +387,10 @@ class Lilota:
             reported through ``error``.
 
           number_of_workers (int, optional):
-            Number of worker processes to spawn. Defaults to the number of CPU cores and cannot exceed this value * 5.
+            Number of worker processes to spawn. A worker executes one task
+            at a time, so this is the number of tasks that can be executed
+            in parallel. Defaults to 1 and cannot exceed the number of CPU
+            cores * 5.
 
           scheduler_heartbeat_interval (float, optional):
             Interval in seconds between scheduler node heartbeats.

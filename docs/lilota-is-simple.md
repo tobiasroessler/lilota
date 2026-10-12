@@ -106,6 +106,37 @@ Workers can run:
 * on different machines in a distributed system
 
 
+## Number of workers
+
+A **Lilota** instance starts one worker process, unless you tell it to start more:
+
+``` python
+lilota = Lilota(
+  script_path="sample/myscript.py",
+  number_of_workers=4
+)
+```
+
+A worker executes one task at a time. **number_of_workers** is therefore the number of tasks that can be executed in parallel. With one worker, a task that takes ten minutes lets every other task wait for ten minutes.
+
+Every worker is a Python process of its own, so more workers are not free:
+
+* **Memory:** about 60 MB for a worker that waits for tasks, plus everything your worker script imports.
+* **Database connections:** about 2 for every worker, plus 1 for the scheduler.
+* **Database load:** every worker writes a heartbeat every 5 seconds, and looks for the next task at least every 5 seconds.
+
+The workers are started by the process that creates the **Lilota** instance. A web server that runs several processes of your application starts them once for each of these processes. 4 application processes with **number_of_workers=4** are 16 worker processes and about 36 database connections. PostgreSQL allows 100 connections by default.
+
+The number of workers cannot be greater than the number of CPU cores * 5.
+
+
+### Upgrading from lilota 1.2.1 or older
+
+Up to 1.2.1 a **Lilota** instance without **number_of_workers** started as many workers as the machine has CPU cores. That number was different on every machine, and in a container with a CPU limit it was still the number of cores of the host.
+
+Now it starts one worker. If your application does not set **number_of_workers** and executes several tasks in parallel, set the number you need. Otherwise the tasks are executed one after the other.
+
+
 ## Communication between nodes
 
 All nodes communicate through the shared database. If you do not specify a connection string, **lilota** will use **sqlite:///lilota.db** by default. This creates a SQLite database.
