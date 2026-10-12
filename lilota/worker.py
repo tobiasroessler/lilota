@@ -221,10 +221,14 @@ class LilotaWorker(LilotaNode):
             synchronized worker behavior.
           node_timeout_sec (int, optional): Time in seconds before a node is
             considered inactive. Defaults to 20.
-          task_heartbeat_interval (float, optional): Initial interval in seconds
-            between polling attempts for tasks. Defaults to 0.1.
+          task_heartbeat_interval (float, optional): Interval in seconds after
+            which the worker looks for the next task when it has executed one.
+            Every time it finds no task, the interval is doubled. Must be greater
+            than 0. Defaults to 0.1.
           max_task_heartbeat_interval (float, optional): Maximum polling interval
-            when no tasks are available. Defaults to 5.0.
+            when no tasks are available. A task that is scheduled while the
+            worker is idle is picked up within this time. Must be greater than 0.
+            Defaults to 5.0.
           logging_level (int, optional): Logging level used by the worker.
           **kwargs: Additional keyword arguments passed to ``LilotaNode``.
         """
@@ -247,6 +251,13 @@ class LilotaWorker(LilotaNode):
                 raise ValueError(
                     "node_heartbeat_interval_jitter must be greater than 0 and smaller than 1"
                 )
+
+        # With 0 a worker that finds no task would look again without waiting
+        if task_heartbeat_interval <= 0:
+            raise ValueError("task_heartbeat_interval must be greater than 0")
+
+        if max_task_heartbeat_interval <= 0:
+            raise ValueError("max_task_heartbeat_interval must be greater than 0")
 
         self._node_heartbeat_interval_jitter = node_heartbeat_interval_jitter
         self._task_heartbeat_interval: float = task_heartbeat_interval
@@ -473,7 +484,7 @@ class LilotaWorker(LilotaNode):
             if task:
                 # Initialize the variables
                 task_id = task.id
-                interval = 0.1
+                interval = self._task_heartbeat_interval
 
                 # Configure logging
                 logger: logging.Logger = create_context_logger(

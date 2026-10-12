@@ -49,8 +49,11 @@ This starts the scheduler and the worker manager.
 task_id = lilota.schedule("add", AddInput(a=2, b=3))
 ```
 
-The **schedule** function creates a task entry in the database and starts
-executing it immediately. The ID of the stored task is returned.
+The **schedule** function creates a task entry in the database and returns the ID
+of the stored task. The task is not executed at once: a worker that is free picks it
+up within 5 seconds. A worker that finds no task waits longer every time before it
+looks again, up to **max_task_heartbeat_interval**. To shorten that, pass a smaller
+**max_task_heartbeat_interval** to the **LilotaWorker** in your worker script.
 
 **Retrieve task information including the output (if available):**
 

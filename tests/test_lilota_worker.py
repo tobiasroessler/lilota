@@ -4,6 +4,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from dataclasses import dataclass
 from unittest import TestCase, main
+from unittest.mock import Mock, patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from lilota.constants import DEFAULT_TEST_DB_URL
@@ -23,7 +24,7 @@ import logging
 import time
 from datetime import datetime, timedelta, timezone
 import threading
-from uuid import UUID
+from uuid import UUID, uuid4
 
 
 @dataclass
@@ -87,6 +88,60 @@ class LilotaWorkerTestCase(TestCase):
                     str(ctx.exception),
                     "node_heartbeat_interval_jitter must be greater than 0 and smaller than 1",
                 )
+
+    def test_init___invalid_task_heartbeat_interval_values___should_raise_error(self):
+        invalid_values = [-1, 0]
+
+        for value in invalid_values:
+            with self.subTest(task_heartbeat_interval=value):
+                with self.assertRaises(ValueError) as ctx:
+                    LilotaWorker(
+                        LilotaWorkerTestCase.DB_URL,
+                        task_heartbeat_interval=value,
+                    )
+
+                self.assertEqual(
+                    str(ctx.exception),
+                    "task_heartbeat_interval must be greater than 0",
+                )
+
+    def test_init___invalid_max_task_heartbeat_interval_values___should_raise_error(
+        self,
+    ):
+        invalid_values = [-1, 0]
+
+        for value in invalid_values:
+            with self.subTest(max_task_heartbeat_interval=value):
+                with self.assertRaises(ValueError) as ctx:
+                    LilotaWorker(
+                        LilotaWorkerTestCase.DB_URL,
+                        max_task_heartbeat_interval=value,
+                    )
+
+                self.assertEqual(
+                    str(ctx.exception),
+                    "max_task_heartbeat_interval must be greater than 0",
+                )
+
+    def test_execute_tasks___after_executing_task___should_wait_task_heartbeat_interval(
+        self,
+    ):
+        # Arrange
+        worker = LilotaWorker(
+            LilotaWorkerTestCase.DB_URL,
+            task_heartbeat_interval=0.3,
+        )
+        worker._register(
+            name="add", func=add, input_model=AddInput, output_model=AddOutput
+        )
+        task = Task(id=uuid4(), name="add", input={"a": 1, "b": 2})
+
+        # Act
+        # The worker finds the task, and no task when it looks the next time
+        waits = self.waits_of_worker(worker, [task, None])
+
+        # Assert
+        self.assertEqual(waits, [0.3, 0.6])
 
     def test_register___nothing_is_registered___should_not_have_any_registration(self):
         # Arrange & Act
@@ -586,6 +641,42 @@ class LilotaWorkerTestCase(TestCase):
             if until() or time.monotonic() >= deadline:
                 return
             time.sleep(heartbeat_task.interval)
+
+    def waits_of_worker(
+        self, worker: LilotaWorker, tasks: list[Task | None]
+    ) -> list[float]:
+        """Let the worker look for a task once for every entry of the list, and return how long it waits after each time.
+
+        The worker gets the entry as the task it has found, None for no task. It
+        does not use the database for its tasks, and it does not really wait.
+        """
+
+        class EndOfTest(Exception):
+            pass
+
+        store = Mock()
+        store.get_next_task.side_effect = [*tasks, EndOfTest()]
+        store.start_task.side_effect = lambda id, max_attempts, timeout: next(
+            task for task in tasks if task is not None and task.id == id
+        )
+        worker._task_store = store
+
+        thread = threading.current_thread()
+        sleep = time.sleep
+        waits = []
+
+        def record_wait(seconds: float) -> None:
+            # Workers that other tests have started still look for tasks in their threads
+            if threading.current_thread() is thread:
+                waits.append(seconds)
+            else:
+                sleep(seconds)
+
+        with patch("lilota.worker.time.sleep", record_wait):
+            with self.assertRaises(EndOfTest):
+                worker._execute_tasks()
+
+        return waits
 
     def create_node(self, last_seen_at: datetime) -> UUID:
         with LilotaWorkerTestCase.get_session() as session:
