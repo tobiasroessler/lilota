@@ -6,6 +6,9 @@ from lilota.constants import (
     DEFAULT_DB_URL,
     WORKER_EXIT_CODE_TASK_EXPIRED,
     WORKER_PARENT_PID_ENV,
+    WORKER_RESTART_ATTEMPTS,
+    WORKER_RESTART_DELAY,
+    WORKER_RESTART_RESET_TIME,
 )
 from lilota.heartbeat import Heartbeat, HeartbeatTask
 from lilota.models import Node
@@ -17,6 +20,7 @@ import os
 import sys
 import subprocess
 import signal
+import time
 import traceback
 from typing import Any, Callable, List
 from uuid import UUID, uuid4
@@ -99,10 +103,17 @@ class WorkerErrorOutput(threading.Thread):
 
 
 class ManagedProcess:
-    def __init__(self, proc: subprocess.Popen, script_path: str):
+    def __init__(self, proc: subprocess.Popen, script_path: str, restarts: int = 0):
         self.id = uuid4()
         self.proc = proc
         self.script_path = script_path
+        # How many times in a row the script has been restarted because its process
+        # had died, and when this process was started
+        self.restarts = restarts
+        self.started_at = time.monotonic()
+        # Set when the process has died and waits for its restart: the time from
+        # which on it is restarted
+        self.restart_at: float | None = None
         self.error_output = WorkerErrorOutput(proc)
         self.error_output.start()
 
@@ -119,7 +130,7 @@ class ProcessManager:
         self._on_fatal_error = on_fatal_error
         self._processes: List[ManagedProcess] = []
 
-    def start(self, script_path: str) -> subprocess.Popen:
+    def start(self, script_path: str, restarts: int = 0) -> subprocess.Popen:
         """Starts a new subprocess running the given Python script.
 
         The process is launched using the current Python interpreter and added
@@ -135,6 +146,8 @@ class ProcessManager:
 
         Args:
           script_path (str): Path to the Python script to execute.
+          restarts (int): How many times in a row the script has been restarted
+            because its process had died. Only ``monitor`` passes it.
 
         Returns:
           subprocess.Popen: The Popen object representing the started process.
@@ -162,7 +175,7 @@ class ProcessManager:
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
         )
 
-        self._processes.append(ManagedProcess(proc, script_path))
+        self._processes.append(ManagedProcess(proc, script_path, restarts))
         return proc
 
     def monitor(self):
@@ -184,8 +197,23 @@ class ProcessManager:
         never started its worker.
 
         In all other cases the process is restarted as well.
+
+        A worker that stopped itself because its task has expired is restarted at
+        once. Every other process has died, and is restarted after a waiting
+        time: ``WORKER_RESTART_DELAY`` seconds, and twice as long with every
+        restart in a row. After ``WORKER_RESTART_ATTEMPTS`` restarts in a row the
+        script keeps dying. All processes are stopped and the fatal error callback
+        is invoked. A process that has been running for
+        ``WORKER_RESTART_RESET_TIME`` seconds before it died does not count as a
+        restart in a row.
         """
         for mp in list(self._processes):
+            # The process has died before, and waits for its restart
+            if mp.restart_at is not None:
+                if time.monotonic() >= mp.restart_at:
+                    self._restart(mp, mp.restarts + 1)
+                continue
+
             proc = mp.proc
             returncode = proc.poll()
 
@@ -217,9 +245,57 @@ class ProcessManager:
                     )
                     return
 
-                # Restart process
-                self._processes.remove(mp)
-                self.start(mp.script_path)
+                # A worker that stopped itself because its task has expired has not
+                # died. It is restarted at once, however often that happens.
+                if returncode == WORKER_EXIT_CODE_TASK_EXPIRED:
+                    self._restart(mp, 0)
+                    continue
+
+                # The process has died. If it has been running for a while, it is
+                # not one that keeps dying.
+                restarts = mp.restarts
+                if time.monotonic() - mp.started_at >= WORKER_RESTART_RESET_TIME:
+                    restarts = 0
+
+                # Restarting it again and again would go on for as long as the
+                # application runs, without anybody being told
+                if restarts >= WORKER_RESTART_ATTEMPTS:
+                    self._handle_error(
+                        self._describe_death(mp, restarts, returncode, stderr)
+                    )
+                    return
+
+                # Restart the process, after a waiting time that doubles with every
+                # restart in a row
+                mp.restarts = restarts
+                mp.restart_at = time.monotonic() + WORKER_RESTART_DELAY * 2**restarts
+
+    def _restart(self, mp: ManagedProcess, restarts: int):
+        self._processes.remove(mp)
+        self.start(mp.script_path, restarts)
+
+    def _describe_death(
+        self, mp: ManagedProcess, restarts: int, returncode: int, stderr: str
+    ) -> str:
+        if returncode < 0:
+            try:
+                signal_name = signal.Signals(-returncode).name
+            except ValueError:
+                signal_name = str(-returncode)
+            end = f"was killed by the signal {signal_name}"
+        else:
+            end = f"ended with the exit code {returncode}"
+
+        error = (
+            f"The worker script '{mp.script_path}' was restarted {restarts} times in "
+            f"a row, and its process died every time. The last time it {end}."
+        )
+
+        # What the process has written before it died may tell why
+        if stderr:
+            error += f"\n{stderr}"
+
+        return error
 
     def _handle_error(self, stderr: str):
         # Stop all processes

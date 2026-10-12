@@ -37,3 +37,14 @@ WORKER_PARENT_PID_ENV = "LILOTA_PARENT_PID"
 # How often a worker process checks whether the process that started it is still
 # there, in seconds.
 WORKER_PARENT_CHECK_INTERVAL = 1.0
+
+# A worker process that dies is restarted. A worker that dies every time, for example
+# because it is killed for using too much memory as soon as it starts, would be
+# restarted for as long as the application runs. So the process manager waits before a
+# restart: WORKER_RESTART_DELAY seconds, and twice as long with every restart in a row.
+# After WORKER_RESTART_ATTEMPTS restarts in a row it gives up and reports a fatal
+# error. A worker that has been running for WORKER_RESTART_RESET_TIME seconds before
+# it died is not one that keeps dying: the counting starts again.
+WORKER_RESTART_ATTEMPTS = 5
+WORKER_RESTART_DELAY = 1.0
+WORKER_RESTART_RESET_TIME = 60.0

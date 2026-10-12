@@ -17,7 +17,7 @@ from unittest.mock import patch
 from typing import Any
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from lilota.constants import DEFAULT_TEST_DB_URL
+from lilota.constants import DEFAULT_TEST_DB_URL, WORKER_EXIT_CODE_TASK_EXPIRED
 from lilota.core import (
     Lilota,
     LilotaMode,
@@ -2286,6 +2286,9 @@ class ProcessManagerTestCase(TestCase):
         if cls.fork_marker is not None:
             cls.fork_marker.touch()
 
+    # Code of a script that is killed as soon as it runs
+    KILL_PROCESS = "import os, signal\nos.kill(os.getpid(), signal.SIGKILL)\n"
+
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -2331,6 +2334,140 @@ class ProcessManagerTestCase(TestCase):
         # processes that a task has started. That needs a group of its own.
         self.assertEqual(os.getsid(proc.pid), proc.pid)
         self.assertEqual(os.getpgid(proc.pid), proc.pid)
+
+    def start_process_that_keeps_ending(
+        self, process_manager: ProcessManager, code: str = KILL_PROCESS
+    ) -> list[float]:
+        """Start a script with the process manager that ends the way the code says, also every time it is restarted.
+
+        Returns a list to which the time of every start is added.
+        """
+        self.script.write_text(code)
+        starts = []
+        start = process_manager.start
+
+        def start_and_record(*args) -> subprocess.Popen:
+            starts.append(time.monotonic())
+            return start(*args)
+
+        process_manager.start = start_and_record
+        self.addCleanup(self.end_processes, process_manager)
+
+        process_manager.start(str(self.script))
+        return starts
+
+    def end_processes(self, process_manager: ProcessManager) -> None:
+        for managed_process in process_manager._processes:
+            managed_process.proc.kill()
+            managed_process.proc.wait()
+
+    def monitor(
+        self, process_manager: ProcessManager, until, timeout: float = 10
+    ) -> None:
+        """Call monitor() every 10 milliseconds until the condition is met, or until the timeout."""
+        deadline = time.monotonic() + timeout
+
+        while not until() and time.monotonic() < deadline:
+            process_manager.monitor()
+            time.sleep(0.01)
+
+    def test_monitor___process_keeps_dying___should_give_up_and_report_fatal_error(
+        self,
+    ):
+        # Arrange
+        errors = []
+        process_manager = ProcessManager(on_fatal_error=errors.append)
+
+        with (
+            patch("lilota.core.WORKER_RESTART_ATTEMPTS", 3),
+            patch("lilota.core.WORKER_RESTART_DELAY", 0.01),
+        ):
+            starts = self.start_process_that_keeps_ending(process_manager)
+
+            # Act
+            self.monitor(process_manager, until=lambda: errors or len(starts) > 10)
+
+        # Assert
+        self.assertEqual(
+            len(starts), 4, "The process is started once and restarted 3 times"
+        )
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(
+            errors[0],
+            f"The worker script '{self.script}' was restarted 3 times in a row, and "
+            "its process died every time. The last time it was killed by the signal "
+            "SIGKILL.",
+        )
+        self.assertEqual(process_manager._processes, [])
+
+    def test_monitor___process_keeps_dying___should_wait_longer_before_every_restart(
+        self,
+    ):
+        # Arrange
+        delay = 0.2
+        process_manager = ProcessManager()
+
+        with (
+            patch("lilota.core.WORKER_RESTART_ATTEMPTS", 10),
+            patch("lilota.core.WORKER_RESTART_DELAY", delay),
+        ):
+            starts = self.start_process_that_keeps_ending(process_manager)
+
+            # Act
+            self.monitor(process_manager, until=lambda: len(starts) >= 4)
+
+        # Assert
+        self.assertGreaterEqual(len(starts), 4)
+        waits = [later - earlier for earlier, later in zip(starts, starts[1:])]
+        self.assertGreaterEqual(waits[0], delay)
+        self.assertGreaterEqual(waits[1], 2 * delay)
+        self.assertGreaterEqual(waits[2], 4 * delay)
+
+    def test_monitor___process_dies_after_running_for_a_while___should_not_give_up(
+        self,
+    ):
+        # Arrange
+        errors = []
+        process_manager = ProcessManager(on_fatal_error=errors.append)
+        code = "import time\ntime.sleep(0.3)\n" + self.KILL_PROCESS
+
+        with (
+            patch("lilota.core.WORKER_RESTART_ATTEMPTS", 2),
+            patch("lilota.core.WORKER_RESTART_DELAY", 0.01),
+            patch("lilota.core.WORKER_RESTART_RESET_TIME", 0.1),
+        ):
+            starts = self.start_process_that_keeps_ending(process_manager, code)
+
+            # Act
+            # More restarts than are allowed in a row
+            self.monitor(process_manager, until=lambda: errors or len(starts) >= 5)
+
+        # Assert
+        self.assertEqual(errors, [])
+        self.assertEqual(len(starts), 5)
+
+    def test_monitor___process_stops_itself_because_task_expired___should_restart_it_at_once(
+        self,
+    ):
+        # Arrange
+        errors = []
+        process_manager = ProcessManager(on_fatal_error=errors.append)
+        code = f"import sys\nsys.exit({WORKER_EXIT_CODE_TASK_EXPIRED})\n"
+
+        with (
+            patch("lilota.core.WORKER_RESTART_ATTEMPTS", 2),
+            # A restart that waits would not happen within the test
+            patch("lilota.core.WORKER_RESTART_DELAY", 60),
+        ):
+            starts = self.start_process_that_keeps_ending(process_manager, code)
+
+            # Act
+            # More restarts than are allowed in a row
+            self.monitor(process_manager, until=lambda: errors or len(starts) >= 5)
+
+        # Assert
+        self.assertEqual(errors, [])
+        self.assertEqual(len(starts), 5)
 
 
 if __name__ == "__main__":

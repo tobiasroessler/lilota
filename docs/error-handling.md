@@ -68,6 +68,22 @@ What happens to the task the worker was executing depends on why the worker was 
 * The task ran longer than its timeout: it gets the status **expired** and is retried if it has attempts left. See [Retry mechanism](retry-mechanism.md).
 * The process was terminated by a signal: the task is given back and executed again by another worker, about 20 seconds later. See [Worker maintenance](worker-maintenance.md).
 
+## A worker keeps dying
+
+A worker that stopped itself because a task ran longer than its timeout is replaced at once.
+
+A worker process that died for another reason is replaced after a waiting time of 1 second. If the new process dies as well, the waiting time doubles every time: 2, 4, 8 and 16 seconds.
+
+If the process dies again after the fifth restart in a row, another restart would not help. **Lilota** stops all workers and reports a fatal error:
+
+```
+The worker script 'myscript.py' was restarted 5 times in a row, and its process died every time. The last time it was killed by the signal SIGKILL.
+```
+
+If the process has written something to **stderr**, these lines follow.
+
+A worker that has been running for a minute before it died is not one that keeps dying. For the process that replaces it, the counting and the waiting time start again.
+
 ## The database cannot be reached
 
 **lilota** keeps everything in the database. If the database cannot be reached for a while, for example because it is restarted, the workers keep running. This is not a fatal error, and nothing has to be restarted.
@@ -108,3 +124,11 @@ A started worker runs until it is stopped by **Lilota**. If the script ends with
 ```
 The worker script 'myscript.py' exited without starting a worker. Did you forget to call worker.start()?
 ```
+
+
+## Upgrading from lilota 1.2.1 or older
+
+Up to 1.2.1 a worker process that died was replaced within a second, however often that happened. A worker that died every time it was started was restarted once a second for as long as the application was running, and no error was reported.
+
+Nothing has to be changed in your application. Be aware that a worker that was killed is now replaced after 1 to 2 seconds, and that a worker that keeps dying ends in a fatal error after about half a minute.
+
