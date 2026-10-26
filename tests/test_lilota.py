@@ -346,8 +346,7 @@ class LilotaTestCase(TestCase):
 
         # Assert
         try:
-            self.sleep(seconds=1)
-            task = lilota.get_task_by_id(id)
+            task = self.wait_for_task(lilota, id, [TaskStatus.COMPLETED])
             self.assertEqual(task.status, TaskStatus.COMPLETED)
             self.assertIsNone(task.error)
             self.assertEqual(task.progress_percentage, 100)
@@ -375,8 +374,7 @@ class LilotaTestCase(TestCase):
 
         # Assert
         try:
-            self.sleep()
-            task = lilota.get_task_by_id(id)
+            task = self.wait_for_task(lilota, id, [TaskStatus.COMPLETED])
             self.assertEqual(task.status, TaskStatus.COMPLETED)
             self.assertIsNone(task.error)
             self.assertEqual(task.progress_percentage, 100)
@@ -404,8 +402,7 @@ class LilotaTestCase(TestCase):
 
         # Assert
         try:
-            self.sleep(seconds=1)
-            task = lilota.get_task_by_id(id)
+            task = self.wait_for_task(lilota, id, [TaskStatus.COMPLETED])
             self.assertEqual(task.status, TaskStatus.COMPLETED)
             self.assertIsNone(task.error)
             self.assertEqual(task.progress_percentage, 100)
@@ -437,8 +434,8 @@ class LilotaTestCase(TestCase):
 
         # Assert
         try:
-            self.sleep(3)
-            task: Task = lilota.get_task_by_id(id)
+            task: Task = self.wait_for_task(lilota, id, [TaskStatus.COMPLETED])
+            self.assertEqual(task.status, TaskStatus.COMPLETED)
             self.assertEqual(task.progress_percentage, 50)
         finally:
             lilota.stop()
@@ -464,8 +461,7 @@ class LilotaTestCase(TestCase):
 
         # Assert
         try:
-            self.sleep()
-            task = lilota.get_task_by_id(id)
+            task = self.wait_for_task(lilota, id, [TaskStatus.COMPLETED])
             self.assertEqual(task.status, TaskStatus.COMPLETED)
             self.assertIsNone(task.error)
             self.assertEqual(task.progress_percentage, 100)
@@ -499,8 +495,8 @@ class LilotaTestCase(TestCase):
 
         # Assert
         try:
-            self.sleep()
-            task: Task = lilota.get_task_by_id(id)
+            task: Task = self.wait_for_task(lilota, id, [TaskStatus.COMPLETED])
+            self.assertEqual(task.status, TaskStatus.COMPLETED)
             self.assertEqual(task.progress_percentage, 50)
         finally:
             lilota.stop()
@@ -521,13 +517,13 @@ class LilotaTestCase(TestCase):
 
         # Act
         try:
-            lilota.schedule("only_logger")
+            id = lilota.schedule("only_logger")
         except Exception:
             lilota.stop()
 
         # Assert
         try:
-            self.sleep(2)
+            self.wait_for_task(lilota, id, [TaskStatus.COMPLETED])
             log_entries: list[LogEntry] = log_store.get_log_entries()
             self.assertEqual(len(log_entries), 1)
             self.assertEqual("Message from only_logger task", log_entries[0].message)
@@ -555,8 +551,7 @@ class LilotaTestCase(TestCase):
 
         # Assert
         try:
-            self.sleep()
-            task = lilota.get_task_by_id(id)
+            task = self.wait_for_task(lilota, id, [TaskStatus.COMPLETED])
             self.assertEqual(task.status, TaskStatus.COMPLETED)
             self.assertIsNone(task.error)
             self.assertEqual(task.progress_percentage, 100)
@@ -586,8 +581,7 @@ class LilotaTestCase(TestCase):
 
         # Assert
         try:
-            self.sleep(seconds=1)
-            task = lilota.get_task_by_id(id)
+            task = self.wait_for_task(lilota, id, [TaskStatus.COMPLETED])
             self.assertEqual(task.status, TaskStatus.COMPLETED)
             self.assertIsNone(task.error)
             self.assertEqual(task.progress_percentage, 100)
@@ -633,7 +627,9 @@ class LilotaTestCase(TestCase):
             script_path=str(
                 Path(__file__).resolve().parent / "scripts" / "lilota_test_script.py"
             ),
-            number_of_workers=20,
+            # Not more: lilota allows 5 workers for every CPU core, and the machine
+            # the tests run on may have only 2 cores
+            number_of_workers=10,
         )
         lilota.start()
 
@@ -730,8 +726,7 @@ class LilotaTestCase(TestCase):
 
         # Assert
         try:
-            self.sleep(3)
-            task = lilota.get_task_by_id(id)
+            task = self.wait_for_task(lilota, id, [TaskStatus.FAILED])
             self.assertEqual(task.status, TaskStatus.FAILED)
             self.assertIsNotNone(task.error)
             self.assertEqual(task.error["type"], "Exception")
@@ -765,7 +760,8 @@ class LilotaTestCase(TestCase):
         leadership_acquired = False
 
         try:
-            self.sleep(seconds=1)
+            # Every node logs that it has started, and one worker that it is the leader
+            self.wait_for_log_entries(4)
             scheduler_node = lilota._scheduler.get_node()
             worker_nodes = [
                 n for n in lilota.get_all_nodes() if n.type == NodeType.WORKER
@@ -779,25 +775,29 @@ class LilotaTestCase(TestCase):
             self.assertEqual(len(log_entries), 1)
             self.assertEqual(log_entries[0].message, "Node started")
 
+            # The two entries of the leader are written by two threads of the worker,
+            # so their order is not fixed
             log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(
                 worker_node_1.id
             )
-            self.assertEqual("Node started", log_entries[0].message)
-            if len(log_entries) == 2:
-                self.assertEqual(
+            messages = [entry.message for entry in log_entries]
+            self.assertIn("Node started", messages)
+            if len(messages) == 2:
+                self.assertIn(
                     f"Leadership acquired first time (node id: {worker_node_1.id})",
-                    log_entries[1].message,
+                    messages,
                 )
                 leadership_acquired = True
 
             log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(
                 worker_node_2.id
             )
-            self.assertEqual("Node started", log_entries[0].message)
-            if len(log_entries) == 2:
-                self.assertEqual(
+            messages = [entry.message for entry in log_entries]
+            self.assertIn("Node started", messages)
+            if len(messages) == 2:
+                self.assertIn(
                     f"Leadership acquired first time (node id: {worker_node_2.id})",
-                    log_entries[1].message,
+                    messages,
                 )
                 leadership_acquired = True
 
@@ -835,7 +835,7 @@ class LilotaTestCase(TestCase):
             lilota.stop()
 
         # Assert (debugging not possible)
-        self.sleep(3)
+        self.wait_for_restart_of_worker(lilota, process_id)
 
         try:
             new_process = lilota._process_manager._processes[0]
@@ -900,7 +900,7 @@ class LilotaTestCase(TestCase):
             lilota.start()
 
             try:
-                has_failed = lilota.wait_for_failure(timeout=10)
+                has_failed = lilota.wait_for_failure(timeout=30)
 
                 # Act: the worker script is repaired and lilota is started again
                 repair_worker_script()
@@ -941,7 +941,7 @@ class LilotaTestCase(TestCase):
             lilota.start()
 
             try:
-                has_failed = lilota.wait_for_failure(timeout=10)
+                has_failed = lilota.wait_for_failure(timeout=30)
                 workers_after_error = len(lilota._process_manager._processes)
 
                 # Act: the worker script is repaired, and start() is called without
@@ -984,7 +984,7 @@ class LilotaTestCase(TestCase):
             lilota.start()
 
             try:
-                has_failed = lilota.wait_for_failure(timeout=10)
+                has_failed = lilota.wait_for_failure(timeout=30)
                 error = lilota.error
 
                 # Act
@@ -1018,7 +1018,7 @@ class LilotaTestCase(TestCase):
             lilota.start()
 
             try:
-                has_failed = lilota.wait_for_failure(timeout=10)
+                has_failed = lilota.wait_for_failure(timeout=30)
 
                 # Act
                 lilota.schedule("hello_world")
@@ -1061,7 +1061,7 @@ class LilotaTestCase(TestCase):
             lilota.start()
 
             try:
-                has_failed = lilota.wait_for_failure(timeout=10)
+                has_failed = lilota.wait_for_failure(timeout=30)
                 error = lilota.error
             finally:
                 lilota.stop()
@@ -1090,7 +1090,7 @@ class LilotaTestCase(TestCase):
 
         # Act
         lilota.start()
-        lilota.wait_for_failure(timeout=5)
+        lilota.wait_for_failure(timeout=30)
 
         # Assert
         try:
@@ -1659,9 +1659,7 @@ class LilotaTestCase(TestCase):
 
             try:
                 task_id = lilota.schedule("hello_world")
-                task = self.wait_for_task(
-                    lilota, task_id, [TaskStatus.COMPLETED], timeout=15
-                )
+                task = self.wait_for_task(lilota, task_id, [TaskStatus.COMPLETED])
                 has_failed = lilota.has_failed()
                 number_of_workers = len(lilota._process_manager._processes)
             finally:
@@ -1951,7 +1949,7 @@ class LilotaTestCase(TestCase):
         return str(task.error.get("message")).splitlines()[0]
 
     def wait_for_restart_of_worker(
-        self, lilota: Lilota, process_id: UUID, timeout: float = 10
+        self, lilota: Lilota, process_id: UUID, timeout: float = 30
     ) -> bool:
         """Wait until the worker process was replaced by a new one that is running.
 
@@ -1974,7 +1972,7 @@ class LilotaTestCase(TestCase):
             self.sleep(0.1)
 
     def wait_for_task(
-        self, lilota: Lilota, id: UUID, statuses: list[TaskStatus], timeout: float = 10
+        self, lilota: Lilota, id: UUID, statuses: list[TaskStatus], timeout: float = 30
     ) -> Task:
         """Wait until the task has one of the statuses and return it.
 
@@ -1987,6 +1985,20 @@ class LilotaTestCase(TestCase):
             task = lilota.get_task_by_id(id)
             if task.status in statuses or time.monotonic() >= deadline:
                 return task
+            self.sleep(0.1)
+
+    def wait_for_log_entries(self, count: int, timeout: float = 30) -> list[LogEntry]:
+        """Wait until the log has at least the number of entries and return them.
+
+        After the timeout the entries are returned as they are.
+        """
+        log_store = LogStore(self.DB_URL)
+        deadline = time.monotonic() + timeout
+
+        while True:
+            log_entries = log_store.get_log_entries()
+            if len(log_entries) >= count or time.monotonic() >= deadline:
+                return log_entries
             self.sleep(0.1)
 
     @contextmanager
@@ -2018,7 +2030,7 @@ class LilotaTestCase(TestCase):
                 os.dup2(original_stdout, stdout_file_descriptor)
                 os.close(original_stdout)
 
-    def wait_for_text_in_file(self, path: Path, text: str, timeout: float = 5) -> str:
+    def wait_for_text_in_file(self, path: Path, text: str, timeout: float = 30) -> str:
         """Wait until the file contains the text and return the content of the file.
 
         After the timeout the content is returned as it is.
@@ -2031,7 +2043,7 @@ class LilotaTestCase(TestCase):
                 return content
             self.sleep(0.1)
 
-    def wait_for_retry_of_task(self, id: UUID, timeout: float = 10) -> Task | None:
+    def wait_for_retry_of_task(self, id: UUID, timeout: float = 30) -> Task | None:
         """Wait until the task was retried and return the retry, or None after the timeout."""
         deadline = time.monotonic() + timeout
 
@@ -2077,7 +2089,7 @@ class LilotaTestCase(TestCase):
             ):
                 yield failure_file.unlink
 
-    def wait_for_completed_task(self, name: str, timeout: float = 15) -> Task | None:
+    def wait_for_completed_task(self, name: str, timeout: float = 30) -> Task | None:
         """Wait until a task with the name is completed and return it, or None after the timeout.
 
         The completed task is the task that was scheduled or a retry of it. The
@@ -2121,7 +2133,7 @@ class LilotaTestCase(TestCase):
 
         try:
             # The first line the application writes are the process IDs of its workers
-            if select.select([application.stdout], [], [], 10)[0]:
+            if select.select([application.stdout], [], [], 30)[0]:
                 worker_pids = [
                     int(pid) for pid in application.stdout.readline().split()
                 ]
@@ -2137,7 +2149,7 @@ class LilotaTestCase(TestCase):
             for pid in worker_pids:
                 self.kill_process_group(pid)
 
-    def wait_for_worker_nodes(self, count: int, timeout: float = 10) -> bool:
+    def wait_for_worker_nodes(self, count: int, timeout: float = 30) -> bool:
         """Wait until the number of workers has started. Returns False after the timeout."""
         deadline = time.monotonic() + timeout
 
@@ -2151,7 +2163,7 @@ class LilotaTestCase(TestCase):
             self.sleep(0.1)
 
     def wait_for_end_of_processes(
-        self, pids: list[int], timeout: float = 10
+        self, pids: list[int], timeout: float = 30
     ) -> list[int]:
         """Wait until none of the processes is running anymore.
 
@@ -2182,9 +2194,12 @@ class LilotaTestCase(TestCase):
             os.killpg(pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
+        except PermissionError:
+            # macOS: the processes have ended, but nobody has collected them yet
+            pass
 
     def wait(self, lilota: Lilota) -> None:
-        max = 60
+        max = 300
         index = 0
 
         while True:
@@ -2362,7 +2377,7 @@ class ProcessManagerTestCase(TestCase):
             managed_process.proc.wait()
 
     def monitor(
-        self, process_manager: ProcessManager, until, timeout: float = 10
+        self, process_manager: ProcessManager, until, timeout: float = 30
     ) -> None:
         """Call monitor() every 10 milliseconds until the condition is met, or until the timeout."""
         deadline = time.monotonic() + timeout

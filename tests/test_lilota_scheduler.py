@@ -98,7 +98,7 @@ class LilotaSchedulerTestCase(TestCase):
             self.assertIsNotNone(first_seen)
 
             # Act
-            time.sleep(2)
+            self.wait_until(lambda: lilota.get_node().last_seen_at > first_seen)
 
             # Assert
             node: Node = lilota.get_node()
@@ -116,15 +116,14 @@ class LilotaSchedulerTestCase(TestCase):
         lilota.start()
         time.sleep(1.2)
 
-        try:
-            node: Node = lilota.get_node()
-            print(f"Node1: {node.id}")
-            first_seen = node.last_seen_at
-            self.assertIsNotNone(first_seen)
-        finally:
-            lilota.stop()
-
         # Act
+        lilota.stop()
+
+        # Read after the stop: a heartbeat between the two would change last_seen_at
+        node: Node = lilota.get_node()
+        print(f"Node1: {node.id}")
+        first_seen = node.last_seen_at
+        self.assertIsNotNone(first_seen)
         time.sleep(2)
 
         # Assert
@@ -236,6 +235,17 @@ class LilotaSchedulerTestCase(TestCase):
         self.assertEqual(len(log_entries), 2)
         self.assertEqual(log_entries[0].message, "Node started")
         self.assertEqual(log_entries[1].message, "Node stopped")
+
+    def wait_until(self, condition, timeout: float = 30) -> bool:
+        """Wait until the condition is met. Returns False after the timeout."""
+        deadline = time.monotonic() + timeout
+
+        while True:
+            if condition():
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
 
 
 if __name__ == "__main__":

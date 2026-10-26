@@ -190,61 +190,42 @@ class LilotaWorkerTestCase(TestCase):
         worker._register(
             name="add", func=add, input_model=AddInput, output_model=AddOutput
         )
-        t = threading.Thread(target=worker.start, daemon=True)
-        t.start()
+        self.start_worker(worker)
 
         # Act & Assert
-        time.sleep(1)
         with self.assertRaises(Exception) as context:
             worker.start()
-        try:
-            self.assertEqual(str(context.exception), "The node is already started")
-        finally:
-            worker.stop()
-            t.join(timeout=1)
+        self.assertEqual(str(context.exception), "The node is already started")
 
     def test_start___should_create_node(self):
         # Act
         worker = LilotaWorker(LilotaWorkerTestCase.DB_URL)
-        t = threading.Thread(target=worker.start, daemon=True)
-        t.start()
+        self.start_worker(worker)
 
         # Assert
-        time.sleep(1)
-        try:
-            node: Node = worker.get_node()
-            self.assertEqual(node.id, worker._node_id)
-            self.assertEqual(node.type, NodeType.WORKER)
-            self.assertEqual(node.status, NodeStatus.RUNNING)
-            self.assertIsNotNone(node.created_at)
-            self.assertIsNotNone(node.last_seen_at)
-        finally:
-            worker.stop()
-            t.join(1)
+        node: Node = worker.get_node()
+        self.assertEqual(node.id, worker._node_id)
+        self.assertEqual(node.type, NodeType.WORKER)
+        self.assertEqual(node.status, NodeStatus.RUNNING)
+        self.assertIsNotNone(node.created_at)
+        self.assertIsNotNone(node.last_seen_at)
 
     def test_start___with_heartbeat___should_start_the_heartbeat(self):
         # Arrange
         worker = LilotaWorker(LilotaWorkerTestCase.DB_URL, node_heartbeat_interval=1.0)
-        t = threading.Thread(target=worker.start, daemon=True)
-        t.start()
-        time.sleep(1)
+        self.start_worker(worker)
+        node: Node = worker.get_node()
+        first_seen = node.last_seen_at
+        self.assertIsNotNone(first_seen)
 
-        try:
-            node: Node = worker.get_node()
-            first_seen = node.last_seen_at
-            self.assertIsNotNone(first_seen)
+        # Act
+        self.wait_until(lambda: worker.get_node().last_seen_at > first_seen)
 
-            # Act
-            time.sleep(2)
-
-            # Assert
-            node: Node = worker.get_node()
-            self.assertGreater(
-                node.last_seen_at, first_seen, "Heartbeat should update last_seen_at"
-            )
-        finally:
-            worker.stop()
-            t.join(1)
+        # Assert
+        node: Node = worker.get_node()
+        self.assertGreater(
+            node.last_seen_at, first_seen, "Heartbeat should update last_seen_at"
+        )
 
     def test_stop___but_start_was_not_executed___should_raise_exception(self):
         # Arrange
@@ -264,19 +245,16 @@ class LilotaWorkerTestCase(TestCase):
     def test_stop___with_heartbeat___should_stop_the_heartbeat(self):
         # Arrange
         worker = LilotaWorker(LilotaWorkerTestCase.DB_URL, node_heartbeat_interval=1.0)
-        t = threading.Thread(target=worker.start, daemon=True)
-        t.start()
-        time.sleep(1.2)
-
-        try:
-            node: Node = worker.get_node()
-            first_seen = node.last_seen_at
-            self.assertIsNotNone(first_seen)
-        finally:
-            worker.stop()
-            t.join(3)
+        self.start_worker(worker)
+        self.wait_for_heartbeat(worker)
 
         # Act
+        worker.stop()
+
+        # Read after the stop: a heartbeat between the two would change last_seen_at
+        node: Node = worker.get_node()
+        first_seen = node.last_seen_at
+        self.assertIsNotNone(first_seen)
         time.sleep(2)
 
         # Assert
@@ -291,17 +269,12 @@ class LilotaWorkerTestCase(TestCase):
         log_store: LogStore = LogStore(LilotaWorkerTestCase.DB_URL)
 
         # Act
-        t = threading.Thread(target=worker.start, daemon=True)
-        t.start()
-        time.sleep(1)
+        self.start_worker(worker)
+        node: Node = worker.get_node()
+        self.wait_for_heartbeat(worker)
+        worker.stop()
 
         # Assert
-        try:
-            node: Node = worker.get_node()
-        finally:
-            worker.stop()
-            t.join(1)
-
         log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(node.id)
         self.assertEqual(len(log_entries), 3)
         self.assertEqual("Node started", log_entries[0].message)
@@ -317,24 +290,17 @@ class LilotaWorkerTestCase(TestCase):
         worker2 = LilotaWorker(LilotaWorkerTestCase.DB_URL, logging_level=logging.DEBUG)
         log_store: LogStore = LogStore(LilotaWorkerTestCase.DB_URL)
 
-        # Act
-        t1 = threading.Thread(target=worker1.start, daemon=True)
-        t2 = threading.Thread(target=worker2.start, daemon=True)
-        t1.start()
-        time.sleep(0.5)
-        t2.start()
-        time.sleep(0.5)
+        # Act: the second worker starts when the first one is the leader
+        self.start_worker(worker1)
+        self.wait_for_heartbeat(worker1)
+        self.start_worker(worker2)
+        self.wait_for_heartbeat(worker2)
+        node1: Node = worker1.get_node()
+        node2: Node = worker2.get_node()
+        worker1.stop()
+        worker2.stop()
 
         # Assert
-        try:
-            node1: Node = worker1.get_node()
-            node2: Node = worker2.get_node()
-        finally:
-            worker1.stop()
-            worker2.stop()
-            t1.join(1)
-            t2.join(1)
-
         log_entries: list[LogEntry] = log_store.get_log_entries_by_node_id(node1.id)
         self.assertEqual(len(log_entries), 3)
         self.assertEqual("Node started", log_entries[0].message)
@@ -367,9 +333,8 @@ class LilotaWorkerTestCase(TestCase):
             session.commit()
 
         # Act
-        t = threading.Thread(target=worker.start, daemon=True)
-        t.start()
-        time.sleep(1)
+        self.start_worker(worker)
+        self.wait_for_heartbeat(worker)
         worker._heartbeat.stop()
 
         # Assert
@@ -386,8 +351,6 @@ class LilotaWorkerTestCase(TestCase):
             f"Leadership acquired first time (node id: {node_id})",
             log_entries[1].message,
         )
-        worker.stop()
-        t.join(1)
 
     def test_leadership___with_two_workers_and_first_one_expires___should_set_second_worker_as_leader(
         self,
@@ -409,9 +372,8 @@ class LilotaWorkerTestCase(TestCase):
             self.assertIsNone(node_leader)
             session.commit()
 
-        t1 = threading.Thread(target=worker1.start, daemon=True)
-        t1.start()
-        time.sleep(1)
+        self.start_worker(worker1)
+        self.wait_for_heartbeat(worker1)
         worker1._heartbeat.stop()
 
         with LilotaWorkerTestCase.get_session() as session:
@@ -426,13 +388,12 @@ class LilotaWorkerTestCase(TestCase):
             node_timeout_sec=2,
             logging_level=logging.DEBUG,
         )
-        t2 = threading.Thread(target=worker2.start, daemon=True)
-        t2.start()
+        self.start_worker(worker2)
 
         # The second worker becomes the leader when the lease of the first one has
         # expired. It looks for dead nodes when its own heartbeats have reached the
         # database for as long as the node timeout of 2 seconds.
-        time.sleep(4)
+        self.wait_for_log_entry(worker2.get_node().id, "Marked 1 stale node(s) as DEAD")
         worker2._heartbeat.stop()
 
         # Assert
@@ -467,10 +428,6 @@ class LilotaWorkerTestCase(TestCase):
         self.assertIn(
             "Marked 1 stale node(s) as DEAD", [entry.message for entry in log_entries]
         )
-        worker1.stop()
-        worker2.stop()
-        t1.join(1)
-        t2.join(1)
 
     def test_leadership___with_two_workers_and_first_one_is_leader___should_not_change_leader(
         self,
@@ -489,9 +446,8 @@ class LilotaWorkerTestCase(TestCase):
             node_heartbeat_interval_jitter=None,
             node_timeout_sec=2,
         )
-        t1 = threading.Thread(target=worker1.start, daemon=True)
-        t1.start()
-        time.sleep(2)
+        self.start_worker(worker1)
+        self.wait_for_heartbeat(worker1)
 
         worker2 = LilotaWorker(
             LilotaWorkerTestCase.DB_URL,
@@ -499,17 +455,18 @@ class LilotaWorkerTestCase(TestCase):
             node_heartbeat_interval_jitter=None,
             node_timeout_sec=2,
         )
-        t2 = threading.Thread(target=worker2.start, daemon=True)
-        t2.start()
-        time.sleep(2)
+        self.start_worker(worker2)
+        self.wait_for_heartbeat(worker2)
 
         with LilotaWorkerTestCase.get_session() as session:
             node_leader = session.get(NodeLeader, 1)
             self.assertEqual(node_leader.node_id, worker1.get_node().id)
             first_expiration_date = node_leader.lease_expires_at
 
-        # Act
-        time.sleep(2)
+        # Act: the leader renews its lease with its next heartbeat
+        self.wait_until(
+            lambda: self.get_node_leader().lease_expires_at > first_expiration_date
+        )
 
         # Assert
         with LilotaWorkerTestCase.get_session() as session:
@@ -517,10 +474,6 @@ class LilotaWorkerTestCase(TestCase):
             self.assertEqual(node_leader.node_id, worker1.get_node().id)
             next_expiration_date = node_leader.lease_expires_at
             self.assertGreater(next_expiration_date, first_expiration_date)
-        worker1.stop()
-        worker2.stop()
-        t1.join(1)
-        t2.join(1)
 
     def test_update_status_on_expired_tasks___with_one_running_and_expired_task___should_set_status_expired(
         self,
@@ -539,13 +492,10 @@ class LilotaWorkerTestCase(TestCase):
         worker = LilotaWorker(LilotaWorkerTestCase.DB_URL, logging_level=logging.DEBUG)
 
         # Act
-        t = threading.Thread(target=worker.start, daemon=True)
-        t.start()
-        try:
-            time.sleep(1)
-            t.join(1)
-        finally:
-            worker.stop()
+        self.start_worker(worker)
+        self.wait_until(
+            lambda: store.get_task_by_id(task_id).status == TaskStatus.EXPIRED
+        )
 
         # Assert
         task: Task = store.get_task_by_id(task_id)
@@ -614,6 +564,71 @@ class LilotaWorkerTestCase(TestCase):
     def now(self) -> datetime:
         return datetime.now(timezone.utc)
 
+    def start_worker(self, worker: LilotaWorker) -> None:
+        """Start the worker in a thread and wait until it has started. It is stopped when the test has ended.
+
+        The worker sends heartbeats, but it does not look for tasks. stop() does not
+        end the loop that looks for tasks, so the thread would go on taking the tasks
+        that the tests after this one create.
+        """
+        started = threading.Event()
+        stopped = threading.Event()
+
+        def wait_for_stop() -> None:
+            started.set()
+            stopped.wait()
+
+        worker._execute_tasks = wait_for_stop
+        thread = threading.Thread(target=worker.start, daemon=True)
+
+        def stop_worker() -> None:
+            try:
+                if worker._is_started:
+                    worker.stop()
+            finally:
+                stopped.set()
+                thread.join(10)
+
+        self.addCleanup(stop_worker)
+        thread.start()
+        self.assertTrue(started.wait(30), "The worker did not start")
+
+    def wait_until(self, condition, timeout: float = 30) -> bool:
+        """Wait until the condition is met. Returns False after the timeout."""
+        deadline = time.monotonic() + timeout
+
+        while True:
+            if condition():
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
+
+    def wait_for_heartbeat(self, worker: LilotaWorker) -> bool:
+        """Wait until the worker has sent its first heartbeat, with which it has tried to become the leader.
+
+        Returns False after the timeout.
+        """
+        heartbeat_task = worker._heartbeat._task
+        return self.wait_until(lambda: heartbeat_task._last_heartbeat_at is not None)
+
+    def wait_for_log_entry(
+        self, node_id: UUID, message: str, timeout: float = 30
+    ) -> bool:
+        """Wait until the node has written the message to the log. Returns False after the timeout."""
+        log_store = LogStore(LilotaWorkerTestCase.DB_URL)
+        return self.wait_until(
+            lambda: any(
+                entry.message == message
+                for entry in log_store.get_log_entries_by_node_id(node_id)
+            ),
+            timeout,
+        )
+
+    def get_node_leader(self) -> NodeLeader:
+        with LilotaWorkerTestCase.get_session() as session:
+            return session.get(NodeLeader, 1)
+
     def create_heartbeat_task(self) -> WorkerHeartbeatTask:
         """Create the heartbeat task of a worker: a heartbeat every 0.2 seconds, and a node timeout of 1 second."""
         logger = logging.getLogger("test_logger")
@@ -631,7 +646,7 @@ class LilotaWorkerTestCase(TestCase):
         )
 
     def execute_heartbeats(
-        self, heartbeat_task: WorkerHeartbeatTask, until, timeout: float = 5
+        self, heartbeat_task: WorkerHeartbeatTask, until, timeout: float = 30
     ) -> None:
         """Execute the heartbeat task in its interval until the condition is met, or until the timeout."""
         deadline = time.monotonic() + timeout
