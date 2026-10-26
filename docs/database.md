@@ -49,7 +49,7 @@ Up to 1.1.1, **lilota** recorded its revision in **alembic_version**. Nothing ha
 
 ## Cleaning up
 
-**lilota** deletes nothing by itself. Every task, every retry, every log entry and every node stays in the database, and the row of a task keeps its **input**, **output** and **error**.
+**lilota** deletes nothing by itself. Every task, every retry, every log entry and every node stays in the database, and the row of a task keeps its **input**, **output** and **error**. The one exception is the input of a task registered with **keep_input=False**: it is removed as soon as the task is finished (see [Task registration](task-registration.md#tasks-whose-input-should-not-stay-in-the-database)).
 
 To delete what is old, call **cleanup** from time to time, for example once a day:
 
@@ -122,6 +122,7 @@ This table stores information about the tasks executed by the system.
 | `run_at`              | Timestamp indicating when the task becomes eligible for execution.                                  |
 | `attempts`            | Which attempt this task is: 1 for a task that was scheduled, 2 for its first retry, and so on.      |
 | `max_attempts`        | How often the task is executed at most. The first execution counts.                                 |
+| `keep_input`          | False if the input is removed once the task is finished. Set by the worker that starts the task.    |
 | `retried_at`          | Timestamp when a retry was created for this task. Empty if the task was not retried.                |
 | `previous_task_id`    | For a retry: identifier of the task it retries. Empty for a task that was scheduled.                |
 | `timeout`             | Maximum execution duration allowed for the task before it should be considered timed out.           |
@@ -129,7 +130,7 @@ This table stores information about the tasks executed by the system.
 | `progress_percentage` | Current progress of the task expressed as a percentage (0–100).                                     |
 | `start_date_time`     | Timestamp when the task started execution.                                                          |
 | `end_date_time`       | Timestamp when the task finished execution (successfully or with failure).                          |
-| `input`               | JSON payload containing the input parameters for the task.                                          |
+| `input`               | JSON payload containing the input parameters for the task. NULL once a task with `keep_input` false is finished. |
 | `output`              | JSON payload containing the result produced by the task.                                            |
 | `error`               | JSON object describing an error if the task execution failed.                                       |
 | `locked_by`           | Identifier of the worker node currently holding the execution lock for the task.                    |

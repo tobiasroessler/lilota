@@ -1,5 +1,14 @@
 from typing import Any, Callable, Type, TypeVar, Optional, Protocol, runtime_checkable
-from sqlalchemy import Integer, String, Text, DateTime, JSON, CheckConstraint, Index
+from sqlalchemy import (
+    Integer,
+    String,
+    Text,
+    DateTime,
+    JSON,
+    CheckConstraint,
+    Index,
+    true,
+)
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 from datetime import datetime, timezone, timedelta
@@ -150,6 +159,8 @@ class RegisteredTask:
       context_param_name (Optional[str]): Name of the context parameter.
       timeout (Optional[timedelta]): Optional timeout that can be set for a task.
       max_attempts (int): Upper limit on how many times the task may be executed.
+      keep_input (bool): False to remove the input of the task from the database
+        as soon as the task is finished for good.
     """
 
     def __init__(
@@ -161,6 +172,7 @@ class RegisteredTask:
         context_param_name: Optional[str],
         timeout: Optional[timedelta],
         max_attempts: int,
+        keep_input: bool = True,
     ):
         self.func = func
         self.input_model = input_model
@@ -169,6 +181,7 @@ class RegisteredTask:
         self.context_param_name = context_param_name
         self.timeout = timeout
         self.max_attempts = max_attempts
+        self.keep_input = keep_input
 
     def __call__(self, raw_input: Any, task_context: TaskContext):
         """Execute the registered task.
@@ -285,6 +298,14 @@ class Task(Base):
     # attempt, and every retry is a new task that counts one further.
     attempts: Mapped[int] = mapped_column(nullable=False, default=1)
     max_attempts: Mapped[int] = mapped_column(nullable=False, default=1)
+    # Whether the input stays in the row once the task is finished for good: completed,
+    # or failed or expired with no attempts left. A task registered with
+    # keep_input=False, because its input is sensitive, has its input set to NULL then,
+    # and a task that is retried has it set to NULL as soon as its retry has a copy.
+    # Written by the worker that starts the task, like max_attempts and timeout.
+    keep_input: Mapped[bool] = mapped_column(
+        nullable=False, default=True, server_default=true()
+    )
     retried_at: Mapped[datetime | None] = mapped_column(
         UtcDateTime(), nullable=True, default=None, index=True
     )

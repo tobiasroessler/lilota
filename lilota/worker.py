@@ -316,6 +316,7 @@ class LilotaWorker(LilotaNode):
         context_param_name: Optional[str] = None,
         timeout: Optional[timedelta] = None,
         max_attempts: int = MAX_ATTEMPTS,
+        keep_input: bool = True,
     ):
         if self._is_started:
             raise Exception(
@@ -334,6 +335,7 @@ class LilotaWorker(LilotaNode):
             context_param_name=context_param_name,
             timeout=timeout,
             max_attempts=max_attempts,
+            keep_input=keep_input,
         )
 
         self._registry[name] = task
@@ -345,7 +347,25 @@ class LilotaWorker(LilotaNode):
         name: Optional[str] = None,
         timeout: timedelta = timedelta(minutes=5),
         max_attempts: int = MAX_ATTEMPTS,
+        keep_input: bool = True,
     ):
+        """Register a function as a task.
+
+        Args:
+          func: The function, when the decorator is used without parentheses.
+          name (str, optional): The name the task is scheduled by. Defaults to the
+            name of the function.
+          timeout (timedelta, optional): How long the task may run before it is
+            expired. Defaults to 5 minutes. None disables the timeout.
+          max_attempts (int, optional): How often the task is executed at most, the
+            first execution included. Defaults to 1.
+          keep_input (bool, optional): False to remove the input of the task from
+            the database as soon as the task is finished for good: when it is
+            completed, or when it has failed or expired with no attempts left. For
+            a task whose input should not stay in the database, like a mail with a
+            link that signs somebody in. Defaults to True.
+        """
+
         def decorator(fn):
             # Analyze the task signature
             inferred = self._analyze_task_signature(fn)
@@ -363,6 +383,7 @@ class LilotaWorker(LilotaNode):
                 context_param_name=inferred["context_param_name"],
                 timeout=timeout,
                 max_attempts=max_attempts,
+                keep_input=keep_input,
             )
 
             return fn
@@ -512,7 +533,11 @@ class LilotaWorker(LilotaNode):
                         timeout = registered_task.timeout
                         max_attempts = registered_task.max_attempts
                         started_task = self._wait_for_database(
-                            self._task_store.start_task, task_id, max_attempts, timeout
+                            self._task_store.start_task,
+                            task_id,
+                            max_attempts,
+                            timeout,
+                            registered_task.keep_input,
                         )
 
                         # Run task

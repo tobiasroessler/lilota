@@ -241,3 +241,38 @@ It is possible to use the internal logging system from **lilota**. Via the **Tas
 def only_logger(task_context: TaskContext) -> None:
   task_context.logger.info("Message from only_logger task")
 ```
+
+
+## Tasks whose input should not stay in the database
+
+The input of a task is stored as JSON in the **input** column of **lilota_task**, and it stays there until **cleanup** deletes the row (see [Database](database.md#cleaning-up)). For most tasks that is what you want: you can look up later what a task was executed with.
+
+Some inputs should not stay. A task that sends a mail with a link to reset a password gets the link as its input, and the link works for whoever reads it. Somebody who can read the database, or a backup of it, could use it.
+
+Register such a task with **keep_input=False**:
+
+``` python
+@worker.task(max_attempts=5, keep_input=False)
+def send_mail(message: MailMessage) -> None:
+  ...
+```
+
+Its input is set to **NULL** as soon as nothing can need it any more:
+
+| The task                                     | Its input                                                     |
+| -------------------------------------------- | ------------------------------------------------------------- |
+| is waiting or being executed                 | stays                                                         |
+| is completed                                 | is removed                                                    |
+| has failed or expired with attempts left     | stays until its retry is created, which takes it over. Then it is removed from the failed task |
+| has failed or expired with no attempts left  | is removed                                                    |
+
+The row of the task stays as before: its status, its attempts, its times, its output and its error. Only the input is gone, so a task that failed can no longer be looked up for what it was executed with.
+
+The input is removed in the same transaction that ends the task, so there is no moment in which a task has ended and its input is still waiting to be removed. A task that is given back because its worker died is not finished, and keeps its input (see [Worker maintenance](worker-maintenance.md)).
+
+**keep_input** is stored with the task in the **keep_input** column, when a worker starts it, like **max_attempts** and **timeout**. A task that no worker has started yet keeps its input in any case.
+
+
+## Upgrading from lilota 1.3.0 or older
+
+Nothing has to be changed in your application. The new **keep_input** column of **lilota_task** is added by **lilota**'s migrations when a scheduler or a worker is created (see [Database](database.md#creating-the-tables)). Existing tasks keep their input, as before.

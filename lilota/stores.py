@@ -11,7 +11,17 @@ from .models import (
     LogEntry,
 )
 from datetime import datetime, timezone, timedelta
-from sqlalchemy import create_engine, delete, func, select, update, and_, not_, or_
+from sqlalchemy import (
+    create_engine,
+    delete,
+    func,
+    select,
+    update,
+    and_,
+    not_,
+    null,
+    or_,
+)
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
 from typing import Any
@@ -244,6 +254,8 @@ class TaskStore(StoreBase):
                     .values(status=TaskStatus.EXPIRED)
                 )
 
+                self._remove_input_of_finished_tasks(session)
+
     def release_tasks_of_dead_nodes(
         self, cutoff: datetime, exclude_node_id: UUID
     ) -> int:
@@ -400,7 +412,11 @@ class TaskStore(StoreBase):
             return session.get(Task, task_id)
 
     def start_task(
-        self, id: UUID, max_attempts: int, timeout: timedelta | None = None
+        self,
+        id: UUID,
+        max_attempts: int,
+        timeout: timedelta | None = None,
+        keep_input: bool = True,
     ) -> Task:
         """Mark a task as RUNNING and initialize metadata.
 
@@ -408,6 +424,9 @@ class TaskStore(StoreBase):
             id (UUID): Id of the task.
             max_attempts (int): Upper limit on how many times the task may be executed.
             timeout (timedelta | None): Optional timeout that can be set for a task.
+            keep_input (bool): False to set the input to NULL once the task is
+                finished for good. Written to the row, so that the leader knows it
+                too when it expires or retries the task.
 
         Returns:
             Task | None: The started task, or None if no task is available.
@@ -427,6 +446,7 @@ class TaskStore(StoreBase):
                 task.pid = os.getpid()
                 task.status = TaskStatus.RUNNING
                 task.max_attempts = max_attempts
+                task.keep_input = keep_input
                 task.progress_percentage = 0
                 task.start_date_time = start_date_time
                 task.expires_at = expires_at
@@ -541,12 +561,18 @@ class TaskStore(StoreBase):
                         max_attempts=task.max_attempts,
                         previous_task_id=task.id,
                         timeout=task.timeout,
+                        keep_input=task.keep_input,
                         input=task.input,
                     )
 
                     new_tasks.append(retry_task)
 
                 session.add_all(new_tasks)
+
+                # The retries have a copy of the input now
+                if new_tasks:
+                    self._remove_input_of_finished_tasks(session)
+
                 return len(new_tasks)
 
     def set_progress(self, id: UUID, progress: int):
@@ -680,7 +706,47 @@ class TaskStore(StoreBase):
                     )
                     .values(**values)
                 )
+
+                self._remove_input_of_finished_tasks(session, id)
+
                 return result.rowcount == 1
+
+    def _remove_input_of_finished_tasks(self, session, id: UUID | None = None) -> None:
+        """Set the input to NULL of tasks with keep_input=False that are finished for good.
+
+        A task is finished for good when nothing can execute it again:
+          - it is completed,
+          - it was retried: its retry has a copy of the input,
+          - it has failed or expired with no attempts left.
+
+        Called in the transaction of every statement that can finish a task, so the
+        input is gone together with the change that finished it.
+
+        Args:
+          session: The session of that transaction.
+          id (UUID | None): Only look at this task. None looks at all tasks, for the
+            leader, which expires and retries many at once.
+        """
+        statement = update(Task).where(
+            Task.keep_input.is_(False),
+            Task.input.is_not(None),
+            or_(
+                Task.status == TaskStatus.COMPLETED,
+                Task.retried_at.is_not(None),
+                and_(
+                    Task.status.in_([TaskStatus.FAILED, TaskStatus.EXPIRED]),
+                    Task.attempts >= Task.max_attempts,
+                ),
+            ),
+        )
+
+        if id is not None:
+            statement = statement.where(Task.id == id)
+
+        # null(), not None: for a JSON column None is stored as the JSON value null,
+        # which is not NULL to the WHERE clause above, and the row would be found
+        # again every time.
+        session.execute(statement.values(input=null()))
 
     def _load_task(self, session, id: UUID) -> Task:
         task: Task = session.get(Task, id)

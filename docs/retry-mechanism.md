@@ -49,6 +49,7 @@ A retry is a new task: a new row in **lilota_task** with the same name and the s
 * Its **attempts** column counts one further. The task you scheduled is attempt 1, its first retry is attempt 2.
 * Its **previous_task_id** column is the ID of the task it retries.
 * The task that failed keeps its status and its error, and its **retried_at** column says when the retry was created.
+* A task registered with **keep_input=False** hands its input over to the retry: the failed task's input is removed when the retry is created (see [Task registration](task-registration.md#tasks-whose-input-should-not-stay-in-the-database)).
 
 The ID returned by **schedule** therefore always is the ID of the first attempt.
 
